@@ -227,15 +227,15 @@ function generateInsights(
   const totalColumns = numericCols.length + categoricalCols.length;
   
   const insights: string[] = [
-    "# 📊 Your Data at a Glance",
+    "# 📈 Business Performance Insights",
     "",
-    `Your dataset has ${totalColumns} different types of information: ${numericCols.length} with numbers and ${categoricalCols.length} with categories.`,
+    `Analysis of your ${totalColumns} data points reveals key opportunities for growth and optimization.`,
     ""
   ];
   
-  // Add insights about numeric columns
+  // Add insights about numeric columns (revenue/sales metrics)
   if (numericCols.length > 0) {
-    insights.push("## 💰 Transaction Highlights");
+    insights.push("## 💰 Revenue & Sales Metrics");
     
     // Highlight key numeric metrics
     numericCols.forEach(column => {
@@ -244,23 +244,33 @@ function generateInsights(
       const formattedMin = stats.min.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
       const formattedMax = stats.max.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
       
-      insights.push(`Your average ${column.toLowerCase()} is **$${formattedMean}**`);
-      insights.push(`* ${column}s range from $${formattedMin} to $${formattedMax}`);
+      insights.push(`**Average ${column.toLowerCase()}:** $${formattedMean}`);
       
-      // Check for high variation
+      // Revenue optimization insights
       const range = stats.max - stats.min;
       const rangePct = (range / stats.mean * 100);
+      
       if (rangePct > 100) {
-        insights.push(`* There's quite a bit of variation between your smallest and largest ${column.toLowerCase()}s`);
+        insights.push(`* **Revenue Gap:** There's a ${rangePct.toFixed(0)}% difference between your highest and lowest transactions`);
+        insights.push(`* **Opportunity:** If you brought your lower transactions up by just 20%, you could see approximately ${(stats.mean * 0.2).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")} in additional revenue per transaction`);
+      }
+      
+      // Variability insights
+      const variability = stats.std / stats.mean;
+      if (variability > 0.5) {
+        insights.push(`* **Inconsistent Performance:** High variation in ${column.toLowerCase()} suggests opportunity for standardizing your sales process`);
+        insights.push(`* **Potential Impact:** Reducing variation by implementing consistent upselling could stabilize revenue`);
+      } else {
+        insights.push(`* **Consistent Performance:** Your ${column.toLowerCase()} show reliable patterns, good foundation for growth initiatives`);
       }
       
       insights.push("");
     });
   }
   
-  // Add insights about categorical columns
+  // Add insights about product performance
   if (categoricalCols.length > 0) {
-    insights.push("## 🔍 What's in Your Data");
+    insights.push("## 🏆 Product & Time Performance");
     
     // Check for product-like columns
     const productColumns = categoricalCols.filter(col => 
@@ -269,54 +279,91 @@ function generateInsights(
       col.toLowerCase() === 'good');
       
     if (productColumns.length > 0) {
-      insights.push("**Popular Products**");
+      insights.push("**Top Performing Products**");
       productColumns.forEach(col => {
         const stats = categoricalColumns[col];
-        insights.push(`* ${stats.most_common} is your star product! It appears ${stats.frequency.toLocaleString()} times`);
-        insights.push(`* You have ${stats.unique_values} different products in total`);
+        const topProductPercentage = (stats.frequency / stats.unique_values) * 100;
+        
+        insights.push(`* **${stats.most_common}** is your revenue driver (${stats.frequency.toLocaleString()} sales, ${topProductPercentage.toFixed(1)}x the average product)`);
+        
+        if (topProductPercentage > 300) {
+          insights.push(`* **Product Dependency Risk:** Your business relies heavily on ${stats.most_common} sales`);
+          insights.push(`* **Diversification Strategy:** Consider promoting complementary items to build resilience`);
+        } else {
+          insights.push(`* **Balanced Portfolio:** Your product mix shows healthy distribution`);
+          insights.push(`* **Growth Strategy:** Leverage your top seller's popularity to introduce premium versions`);
+        }
+        
         insights.push("");
       });
     }
     
-    // Check for time-related columns
+    // Check for time-related columns for peak time optimization
     const timeColumns = categoricalCols.filter(col => 
       col.toLowerCase().includes('period') || 
       col.toLowerCase().includes('day') || 
       col.toLowerCase().includes('time'));
       
     if (timeColumns.length > 0) {
-      insights.push("**Customer Visit Patterns**");
+      insights.push("**Operational Optimization**");
       timeColumns.forEach(col => {
         const stats = categoricalColumns[col];
-        insights.push(`* ${capitalizeFirst(stats.most_common)}s are your busiest time (${stats.frequency.toLocaleString()} transactions)`);
+        const totalRows = Object.values(categoricalColumns).reduce((sum, col) => sum + col.frequency, 0) / categoricalCols.length;
+        const peakPercentage = (stats.frequency / totalRows) * 100;
+        
+        insights.push(`* **Peak Time:** ${capitalizeFirst(stats.most_common)} (${stats.frequency.toLocaleString()} transactions, ${peakPercentage.toFixed(0)}% of business)`);
+        
+        if (peakPercentage > 60) {
+          insights.push(`* **Capacity Constraint:** Your operations may be strained during peak ${stats.most_common} times`);
+          insights.push(`* **Resource Allocation:** Consider adjusting staffing to match this demand curve`);
+        } else {
+          insights.push(`* **Balanced Operations:** Your business shows relatively even distribution throughout ${col}`);
+          insights.push(`* **Efficiency Opportunity:** Optimize scheduling based on these patterns to reduce overhead`);
+        }
+        
+        insights.push("");
       });
-      insights.push("");
     }
     
-    // Check for other important categorical columns
-    categoricalCols
-      .filter(col => !productColumns.includes(col) && !timeColumns.includes(col))
-      .slice(0, 2) // Limit to 2 most important other columns
-      .forEach(col => {
+    // Customer segmentation if applicable
+    const customerColumns = categoricalCols.filter(col => 
+      col.toLowerCase().includes('customer') || 
+      col.toLowerCase().includes('client') || 
+      col.toLowerCase().includes('member'));
+      
+    if (customerColumns.length > 0) {
+      insights.push("**Customer Segmentation Insights**");
+      customerColumns.forEach(col => {
         const stats = categoricalColumns[col];
-        if (stats.unique_values < 10) { // Only show if it has a reasonable number of categories
-          insights.push(`**${capitalizeFirst(col)} Breakdown**`);
-          insights.push(`* Most common: ${stats.most_common} (${stats.frequency.toLocaleString()} instances)`);
-          insights.push(`* You have ${stats.unique_values} different ${col.toLowerCase()} categories`);
-          insights.push("");
-        }
+        
+        insights.push(`* **Key Segment:** ${capitalizeFirst(stats.most_common)} represents your core customer base`);
+        insights.push(`* **Loyalty Strategy:** Develop targeted retention program for this high-value segment`);
+        insights.push(`* **Growth Path:** Create acquisition strategy for similar customer profiles`);
+        
+        insights.push("");
       });
+    }
   }
   
-  // Add key takeaways
-  insights.push("## 💡 Quick Takeaways");
+  // Add key business takeaways
+  insights.push("## 💼 Business Growth Strategies");
   
-  // Generate dynamic takeaways based on the data
+  // Generate dynamic business strategies based on the data
   const takeaways: string[] = [];
+  
+  // Revenue optimization strategy
+  if (numericCols.length > 0) {
+    const col = numericCols[0];
+    const stats = numericColumns[col];
+    
+    // Calculate potential revenue lift
+    const potential20pctLift = stats.mean * 0.2 * (stats.max / stats.mean);
+    takeaways.push(`* **Revenue Optimization:** A 20% increase in average ${col.toLowerCase()} could generate $${potential20pctLift.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")} per high-value transaction`);
+  }
   
   // Business rhythm takeaway
   if (categoricalCols.length > 1) {
-    let businessRhythm = "Your business runs primarily on ";
+    let businessRhythm = "Your business concentrates around ";
     const timePatterns: string[] = [];
     
     // Check time patterns
@@ -336,11 +383,11 @@ function generateInsights(
     
     if (timePatterns.length > 0 && topProduct) {
       businessRhythm += timePatterns.join(' ') + ' ' + topProduct.toLowerCase() + ' sales';
-      takeaways.push(`* **Business Rhythm**: ${businessRhythm}`);
+      takeaways.push(`* **Operational Focus:** ${businessRhythm} - align your best staff and inventory during these critical periods`);
     }
   }
   
-  // Product mix takeaway
+  // Product portfolio strategy
   const productCol = categoricalCols.find(col => 
     col.toLowerCase().includes('product') || 
     col.toLowerCase().includes('item'));
@@ -350,77 +397,79 @@ function generateInsights(
     const dominanceRatio = stats.frequency / stats.unique_values;
     
     if (dominanceRatio > 20) {
-      takeaways.push(`* **Product Mix**: ${stats.most_common} dominates your sales - consider if you want to promote other products`);
+      takeaways.push(`* **Portfolio Strategy:** Create bundles pairing ${stats.most_common} with lower-performing items to increase attachment rate`);
+      takeaways.push(`* **Risk Mitigation:** Develop backup revenue streams to reduce dependency on your primary product`);
     } else {
-      takeaways.push(`* **Product Mix**: Your sales are relatively balanced across your ${stats.unique_values} products`);
+      takeaways.push(`* **Catalog Optimization:** Your product diversity is healthy - focus on optimizing pricing and promotion across categories`);
     }
   }
   
-  // Customer patterns
+  // Demand distribution strategy
   const dayTypeCol = categoricalCols.find(col => col.toLowerCase().includes('weekday') || col.toLowerCase().includes('weekend'));
   if (dayTypeCol) {
     const stats = categoricalColumns[dayTypeCol];
     if (stats.most_common.toLowerCase().includes('weekday')) {
-      takeaways.push(`* **Opportunity**: Weekend traffic is significantly lower - potential growth opportunity`);
+      takeaways.push(`* **Demand Balancing:** Implement weekend-only promotions to drive traffic during slower periods`);
+      takeaways.push(`* **Capacity Utilization:** Consider special weekend events to maximize facility/staff utilization`);
     } else {
-      takeaways.push(`* **Opportunity**: Weekday traffic is significantly lower - potential growth opportunity`);
+      takeaways.push(`* **Weekday Strategy:** Create weekday-specific value offers to attract customers during slower periods`);
     }
   }
   
-  // Transaction variability
-  if (numericCols.length > 0) {
-    const col = numericCols[0];
-    const stats = numericColumns[col];
-    const variability = stats.std / stats.mean;
-    
-    if (variability > 0.5) {
-      takeaways.push(`* **Customer Behavior**: High variation in ${col.toLowerCase()} sizes suggests diverse customer needs`);
-    } else {
-      takeaways.push(`* **Customer Habits**: Regular patterns suggest loyal customer base`);
-    }
-  }
-  
-  // Add generic takeaways if we couldn't generate specific ones
+  // Add generic business strategies if we couldn't generate specific ones
   if (takeaways.length === 0) {
-    takeaways.push("* **Overview**: Your data shows potential for more detailed business analysis");
-    takeaways.push("* **Exploration**: Consider collecting additional data to enhance your insights");
+    takeaways.push("* **Data Strategy:** Collect more transaction-level data to enable deeper performance analysis");
+    takeaways.push("* **KPI Development:** Establish core metrics around sales velocity, customer retention, and product mix");
   }
   
   insights.push(...takeaways);
   insights.push("");
   
-  // Add actionable next steps
-  insights.push("## ⚡ Quick Wins");
+  // Add actionable performance improvement steps
+  insights.push("## 🚀 Performance Accelerators");
   
   // Dynamic recommendations based on data
   const recommendations: string[] = [];
   
-  // Day-based recommendations
+  // Immediate revenue recommendations
+  if (numericCols.length > 0) {
+    recommendations.push("* **Quick Win:** Implement standardized upselling script to increase average transaction value");
+    recommendations.push("* **Pricing Analysis:** Review your pricing strategy against transaction data to optimize margin");
+  }
+  
+  // Day-based business recommendations
   if (categoricalCols.some(col => col.toLowerCase().includes('weekday') || col.toLowerCase().includes('weekend'))) {
-    recommendations.push("* Consider a weekend promotion to boost slower days");
+    recommendations.push("* **Traffic Balancing:** Create time-specific promotions to drive business during your slowest periods");
+    recommendations.push("* **Operational Efficiency:** Adjust staffing models to match actual demand patterns by day/time");
   }
   
   // Time-based recommendations
   if (categoricalCols.some(col => col.toLowerCase().includes('period') || col.toLowerCase().includes('day'))) {
-    recommendations.push("* Create afternoon bundle deals to increase average transaction size");
-    recommendations.push("* Experiment with morning specials to distribute traffic more evenly");
+    recommendations.push("* **Peak Optimization:** Implement premium pricing or exclusive offers during your busiest periods");
+    recommendations.push("* **Capacity Planning:** Ensure your operational workflow is optimized for high-volume periods");
   }
   
   // Product-based recommendations
   if (categoricalCols.some(col => col.toLowerCase().includes('product') || col.toLowerCase().includes('item'))) {
-    recommendations.push("* Track your top 5-10 products more closely - these drive your business");
+    recommendations.push("* **Product Strategy:** Develop a 'good-better-best' offering around your top performers");
+    recommendations.push("* **Inventory Optimization:** Use sales frequency data to improve forecasting and reduce stockouts");
   }
   
   // Transaction-based recommendations
   if (numericCols.some(col => col.toLowerCase().includes('transaction'))) {
-    recommendations.push("* Look for outlier transactions (very large ones) - these might be business accounts good for targeted marketing");
+    recommendations.push("* **Customer Segmentation:** Create VIP program for customers with above-average transaction sizes");
+    recommendations.push("* **Sales Training:** Develop specialized training for handling premium transactions");
   }
   
+  // Marketing recommendations
+  recommendations.push("* **Targeted Marketing:** Develop promotions specifically for your identified peak business periods");
+  recommendations.push("* **Conversion Optimization:** Implement systems to track promotion effectiveness against sales data");
+  
   // Add generic recommendations if we couldn't generate specific ones
-  if (recommendations.length === 0) {
-    recommendations.push("* Explore the data visualizations to identify specific patterns");
-    recommendations.push("* Consider more detailed data collection for better insights");
-    recommendations.push("* Review your business metrics regularly to track performance");
+  if (recommendations.length <= 4) {
+    recommendations.push("* **Performance Dashboard:** Create visualizations of key metrics for regular business review");
+    recommendations.push("* **Competitive Analysis:** Compare your performance data against industry benchmarks");
+    recommendations.push("* **Voice of Customer:** Implement feedback system to correlate customer satisfaction with sales data");
   }
   
   insights.push(...recommendations);

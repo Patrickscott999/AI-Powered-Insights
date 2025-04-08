@@ -6,100 +6,241 @@ interface InsightsSummaryProps {
   summary: string
 }
 
+// Icons for different insight types
+const icons: Record<string, JSX.Element> = {
+  revenue: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+      <path d="M12 7.5a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5z" />
+      <path fillRule="evenodd" d="M1.5 4.875C1.5 3.839 2.34 3 3.375 3h17.25c1.035 0 1.875.84 1.875 1.875v9.75c0 1.036-.84 1.875-1.875 1.875H3.375A1.875 1.875 0 011.5 14.625v-9.75zM8.25 9.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM18.75 9a.75.75 0 00-.75.75v.008c0 .414.336.75.75.75h.008a.75.75 0 00.75-.75V9.75a.75.75 0 00-.75-.75h-.008zM4.5 9.75A.75.75 0 015.25 9h.008a.75.75 0 01.75.75v.008a.75.75 0 01-.75.75H5.25a.75.75 0 01-.75-.75V9.75z" clipRule="evenodd" />
+      <path d="M2.25 18a.75.75 0 000 1.5c5.4 0 10.63.722 15.6 2.075 1.19.324 2.4-.558 2.4-1.82V18.75a.75.75 0 00-.75-.75H2.25z" />
+    </svg>
+  ),
+  product: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+      <path d="M3.375 3C2.339 3 1.5 3.84 1.5 4.875v.75c0 1.036.84 1.875 1.875 1.875h17.25c1.035 0 1.875-.84 1.875-1.875v-.75C22.5 3.839 21.66 3 20.625 3H3.375z" />
+      <path fillRule="evenodd" d="M3.087 9l.54 9.176A3 3 0 006.62 21h10.757a3 3 0 002.995-2.824L20.913 9H3.087zm6.133 2.845a.75.75 0 011.06 0l1.72 1.72 1.72-1.72a.75.75 0 111.06 1.06l-1.72 1.72 1.72 1.72a.75.75 0 11-1.06 1.06L12 15.685l-1.72 1.72a.75.75 0 11-1.06-1.06l1.72-1.72-1.72-1.72a.75.75 0 010-1.06z" clipRule="evenodd" />
+    </svg>
+  ),
+  business: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+      <path fillRule="evenodd" d="M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6zm4.5 7.5a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0v-2.25a.75.75 0 01.75-.75zm3.75-1.5a.75.75 0 00-1.5 0v4.5a.75.75 0 001.5 0V12zm2.25-3a.75.75 0 01.75.75v6.75a.75.75 0 01-1.5 0V9.75A.75.75 0 0113.5 9zm3.75-1.5a.75.75 0 00-1.5 0v9a.75.75 0 001.5 0v-9z" clipRule="evenodd" />
+    </svg>
+  ),
+  performance: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+      <path fillRule="evenodd" d="M2.25 13.5a8.25 8.25 0 018.25-8.25.75.75 0 01.75.75v6.75H18a.75.75 0 01.75.75 8.25 8.25 0 01-16.5 0z" clipRule="evenodd" />
+      <path fillRule="evenodd" d="M12.75 3a.75.75 0 01.75-.75 8.25 8.25 0 018.25 8.25.75.75 0 01-.75.75h-7.5a.75.75 0 01-.75-.75V3z" clipRule="evenodd" />
+    </svg>
+  ),
+  default: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+      <path fillRule="evenodd" d="M2.25 2.25a.75.75 0 000 1.5H3v10.5a3 3 0 003 3h1.21l-1.172 3.513a.75.75 0 001.424.474l.329-.987h8.418l.33.987a.75.75 0 001.422-.474l-1.17-3.513H18a3 3 0 003-3V3.75h.75a.75.75 0 000-1.5H2.25zm6.04 16.5l.5-1.5h6.42l.5 1.5H8.29zm7.46-12a.75.75 0 00-1.5 0v6a.75.75 0 001.5 0v-6zm-3 2.25a.75.75 0 00-1.5 0v3.75a.75.75 0 001.5 0V9zm-3 2.25a.75.75 0 00-1.5 0v1.5a.75.75 0 001.5 0v-1.5z" clipRule="evenodd" />
+    </svg>
+  )
+};
+
+// Colors for different insight sections
+const sectionColors: Record<string, { bg: string, text: string, border: string, icon: string }> = {
+  revenue: { 
+    bg: "bg-green-50", 
+    text: "text-green-900", 
+    border: "border-green-200",
+    icon: "text-green-600"
+  },
+  product: { 
+    bg: "bg-blue-50", 
+    text: "text-blue-900", 
+    border: "border-blue-200",
+    icon: "text-blue-600"
+  },
+  business: { 
+    bg: "bg-purple-50", 
+    text: "text-purple-900", 
+    border: "border-purple-200",
+    icon: "text-purple-600"
+  },
+  performance: { 
+    bg: "bg-amber-50", 
+    text: "text-amber-900", 
+    border: "border-amber-200",
+    icon: "text-amber-600"
+  },
+  default: { 
+    bg: "bg-slate-50", 
+    text: "text-slate-900", 
+    border: "border-slate-200",
+    icon: "text-slate-600"
+  }
+};
+
 export function InsightsSummary({ summary }: InsightsSummaryProps) {
-  const [points, setPoints] = useState<string[]>([])
-  const [sections, setSections] = useState<{title: string, points: string[]}[]>([])
+  const [sections, setSections] = useState<{
+    title: string;
+    type: string;
+    points: { text: string; isHeader: boolean }[];
+  }[]>([]);
 
   useEffect(() => {
-    // Split the summary into bullet points for better readability
-    const processedSummary = summary
-      .split('\n')
-      .filter(line => line.trim() !== '')
+    // Split the summary into lines
+    const lines = summary.split('\n').filter(line => line.trim() !== '');
     
-    setPoints(processedSummary)
+    // Process the markdown structure
+    let currentSection: {
+      title: string;
+      type: string;
+      points: { text: string; isHeader: boolean }[];
+    } = { 
+      title: "Business Insights", 
+      type: "default", 
+      points: [] 
+    };
     
-    // Group insights into sections for better organization
-    let currentSection: {title: string, points: string[]} = {title: "General Insights", points: []}
-    const groupedSections: {title: string, points: string[]}[] = []
+    const processedSections: typeof sections = [];
+    let mainTitleFound = false;
     
-    processedSummary.forEach(point => {
-      // Check if it's a heading
-      if (point.includes("Analysis:") || 
-          point.trim().endsWith("Analysis:") || 
-          point.includes("statistics:") ||
-          point.includes("Pattern Analysis") ||
-          point.includes("Forecast Analysis") ||
-          point.includes("Segmentation")) {
-        
-        // Save previous section if it has points
+    lines.forEach(line => {
+      // Check if it's a main title (# heading)
+      if (line.startsWith('# ')) {
+        mainTitleFound = true;
+        return; // Skip the main title
+      }
+      
+      // Check if it's a section heading (## heading)
+      if (line.startsWith('## ')) {
+        // Save the previous section if it has points
         if (currentSection.points.length > 0) {
-          groupedSections.push({...currentSection})
+          processedSections.push({...currentSection});
+        }
+        
+        // Determine section type based on content
+        const sectionTitle = line.replace(/^## /, '');
+        let sectionType = 'default';
+        
+        if (sectionTitle.includes('Revenue') || sectionTitle.includes('Sales') || sectionTitle.includes('💰')) {
+          sectionType = 'revenue';
+        } else if (sectionTitle.includes('Product') || sectionTitle.includes('Time') || sectionTitle.includes('🏆')) {
+          sectionType = 'product';
+        } else if (sectionTitle.includes('Business') || sectionTitle.includes('Growth') || sectionTitle.includes('💼')) {
+          sectionType = 'business';
+        } else if (sectionTitle.includes('Performance') || sectionTitle.includes('Accelerators') || sectionTitle.includes('🚀')) {
+          sectionType = 'performance';
         }
         
         // Start a new section
         currentSection = {
-          title: point.trim(),
+          title: sectionTitle,
+          type: sectionType,
           points: []
-        }
-      } else if (point.startsWith('-') || point.startsWith('•')) {
-        // Add bullet points to current section
-        currentSection.points.push(point)
-      } else if (!point.includes("Column '") && point.trim() !== '') {
-        // Add other non-heading text as points
-        currentSection.points.push(point)
+        };
+      } 
+      // Check if it's a subsection heading (bold text that's not a bullet point)
+      else if (line.includes('**') && !line.startsWith('*')) {
+        currentSection.points.push({
+          text: line,
+          isHeader: true
+        });
       }
-    })
+      // Otherwise it's a regular point
+      else {
+        currentSection.points.push({
+          text: line,
+          isHeader: false
+        });
+      }
+    });
     
     // Add the last section
     if (currentSection.points.length > 0) {
-      groupedSections.push(currentSection)
+      processedSections.push(currentSection);
     }
     
-    setSections(groupedSections)
-  }, [summary])
+    setSections(processedSections);
+  }, [summary]);
+
+  const formatText = (text: string) => {
+    // Replace markdown bold with spans
+    return text.replace(/\*\*(.*?)\*\*/g, '<span class="font-semibold text-slate-900">$1</span>');
+  };
 
   return (
-    <div className="prose prose-slate max-w-none">
+    <div className="space-y-6">
       {sections.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {sections.map((section, sectionIndex) => (
-            <div 
-              key={sectionIndex} 
-              className="bg-white rounded-lg shadow-sm p-5 border border-slate-100 card-hover"
-            >
-              <div className="flex items-center mb-4">
-                <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center mr-3">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-slate-800">{section.title}</h3>
-              </div>
+        <>
+          <div className="text-sm text-slate-500 mb-4">
+            Our AI has analyzed your data and identified these key business insights:
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {sections.map((section, index) => {
+              const colors = sectionColors[section.type];
+              const icon = icons[section.type] || icons.default;
               
-              <div className="space-y-3">
-                {section.points.map((point, index) => {
-                  // Check if it's a data point (starts with "-")
-                  if (point.startsWith('-') || point.startsWith('•')) {
-                    const cleanPoint = point.substring(1).trim()
-                    return (
-                      <div key={index} className="flex items-start group">
-                        <div className="mr-2 mt-1 flex-shrink-0 w-5 h-5 bg-blue-100 rounded-full p-1 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                        <p className="text-slate-700 text-sm group-hover:text-slate-900 transition-colors">{cleanPoint}</p>
-                      </div>
-                    )
-                  }
+              return (
+                <div 
+                  key={index} 
+                  className={`rounded-xl overflow-hidden shadow-sm transition-all duration-200 hover:shadow-md ${colors.border} border`}
+                >
+                  <div className={`px-5 py-4 ${colors.bg} border-b ${colors.border} flex items-center`}>
+                    <div className={`rounded-full p-1.5 ${colors.icon} mr-3`}>
+                      {icon}
+                    </div>
+                    <h3 className={`text-lg font-bold ${colors.text}`}>
+                      {section.title.replace(/^#+\s*/, '').replace(/[💰🏆💼🚀📈]/g, '')}
+                    </h3>
+                  </div>
                   
-                  // Otherwise it's a normal paragraph
-                  return <p key={index} className="text-slate-700 text-sm pl-7">{point}</p>
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
+                  <div className="bg-white p-5">
+                    <div className="space-y-4">
+                      {section.points.map((point, pointIndex) => {
+                        if (point.isHeader) {
+                          // It's a subsection header
+                          return (
+                            <div key={pointIndex} className="pt-2 pb-1">
+                              <h4 className="text-base font-semibold text-slate-800" 
+                                dangerouslySetInnerHTML={{ __html: formatText(point.text) }} />
+                            </div>
+                          );
+                        }
+                        
+                        // Check if it's a bullet point
+                        if (point.text.startsWith('* ')) {
+                          const bulletText = point.text.replace(/^\* /, '');
+                          return (
+                            <div key={pointIndex} className="flex items-start group">
+                              <div className={`mr-3 mt-1 flex-shrink-0 w-1.5 h-1.5 rounded-full ${colors.bg} border ${colors.border}`}></div>
+                              <div 
+                                className="text-sm text-slate-700 flex-1"
+                                dangerouslySetInnerHTML={{ __html: formatText(bulletText) }}
+                              />
+                            </div>
+                          );
+                        }
+                        
+                        // Regular text
+                        return (
+                          <p 
+                            key={pointIndex} 
+                            className="text-sm text-slate-600 pl-2"
+                            dangerouslySetInnerHTML={{ __html: formatText(point.text) }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 text-sm text-slate-600 flex items-center mt-8">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-slate-500 mr-2">
+              <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm-1.72 6.97a.75.75 0 10-1.06 1.06L10.94 12l-1.72 1.72a.75.75 0 101.06 1.06L12 13.06l1.72 1.72a.75.75 0 101.06-1.06L13.06 12l1.72-1.72a.75.75 0 10-1.06-1.06L12 10.94l-1.72-1.72z" clipRule="evenodd" />
+            </svg>
+            <p>
+              These insights are based on your current data patterns. For a deeper analysis, consider adding more data fields like customer information or cost figures.
+            </p>
+          </div>
+        </>
       ) : (
         <div className="bg-gray-50 rounded-lg p-10 text-center">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto text-slate-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
