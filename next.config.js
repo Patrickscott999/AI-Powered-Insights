@@ -8,12 +8,15 @@ const nextConfig = {
     config.resolve.alias['@'] = path.resolve(__dirname);
     return config;
   },
-  // Add compatibility with Netlify
-  trailingSlash: true,
-  images: {
-    unoptimized: true,
+  // Add compatibility with Vercel
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: '/api/:path*',
+      },
+    ];
   },
-  output: 'export',
 }
 
 module.exports = nextConfig 

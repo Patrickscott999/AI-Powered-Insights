@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 
-// The URL of your Python backend, to be set via environment variable
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:5000";
+// The URL of your serverless function
+const API_URL = process.env.VERCEL_URL 
+  ? `https://${process.env.VERCEL_URL}/api/analyze` 
+  : 'http://localhost:3000/api/analyze';
 
 export async function POST(request: NextRequest) {
   try {
     console.log("API route: Received file upload request")
     
-    // Forward the request to the Python backend
-    const response = await fetch(`${BACKEND_URL}/api/analyze`, {
+    // Forward the request to the serverless function
+    const formData = await request.formData();
+    
+    const response = await fetch(API_URL, {
       method: "POST",
-      body: await request.formData(),
+      body: formData,
     });
     
     // Get the response data
@@ -18,14 +22,14 @@ export async function POST(request: NextRequest) {
     
     // Check if there was an error
     if (!response.ok) {
-      console.error("API route: Backend returned an error:", data.error);
+      console.error("API route: Serverless function returned an error:", data.error);
       return NextResponse.json(
-        { error: data.error || "Backend processing failed" },
+        { error: data.error || "Processing failed" },
         { status: response.status }
       );
     }
     
-    console.log("API route: Backend processing successful");
+    console.log("API route: Processing successful");
     return NextResponse.json(data);
     
   } catch (error) {
