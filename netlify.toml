@@ -1,26 +1,3 @@
 [build]
   command = "npm run build"
-  publish = "out"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
-# The redirects are handled by Next.js, so we can remove these
-# [[redirects]]
-#   from = "/api/*"
-#   to = "/.netlify/functions/api/:splat"
-#   status = 200
-#   force = true
-
-# [[redirects]]
-#   from = "/*"
-#   to = "/index.html"
-#   status = 200 
-
-[functions]
-  node_bundler = "esbuild" 
+  publish = "out" 
