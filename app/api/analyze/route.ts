@@ -222,62 +222,206 @@ function generateInsights(
   categoricalColumns: Record<string, CategoricalStats>,
   correlations: Record<string, Record<string, number>>
 ): string {
+  const numericCols = Object.keys(numericColumns);
+  const categoricalCols = Object.keys(categoricalColumns);
+  const totalColumns = numericCols.length + categoricalCols.length;
+  
   const insights: string[] = [
-    "# Key Insights from Data Analysis\n",
-    "## Data Overview"
+    "# Data Analysis Summary",
+    "",
+    `Your dataset contains ${totalColumns} columns: ${numericCols.length} numeric and ${categoricalCols.length} categorical.`,
+    ""
   ];
   
   // Add insights about numeric columns
-  if (Object.keys(numericColumns).length > 0) {
-    insights.push("\n## Numeric Variables");
+  if (numericCols.length > 0) {
+    insights.push("## Key Numeric Metrics");
     
-    Object.entries(numericColumns).forEach(([column, stats]) => {
-      insights.push(`- **${column}**: Average value is ${stats.mean.toFixed(2)} (range: ${stats.min.toFixed(2)} to ${stats.max.toFixed(2)})`);
+    // Find column with highest and lowest average
+    if (numericCols.length > 1) {
+      const highestAvg = Object.entries(numericColumns).reduce((prev, curr) => 
+        prev[1].mean > curr[1].mean ? prev : curr
+      );
+      
+      const lowestAvg = Object.entries(numericColumns).reduce((prev, curr) => 
+        prev[1].mean < curr[1].mean ? prev : curr
+      );
+      
+      insights.push(`* **${highestAvg[0]}** has the highest average at **${highestAvg[1].mean.toFixed(2)}**`);
+      insights.push(`* **${lowestAvg[0]}** has the lowest average at **${lowestAvg[1].mean.toFixed(2)}**`);
+      insights.push("");
+    }
+    
+    // Only show detailed stats for up to 5 columns to avoid overwhelming the user
+    const topColumns = numericCols.slice(0, 5);
+    insights.push("### Detailed Metrics");
+    
+    topColumns.forEach(column => {
+      const stats = numericColumns[column];
+      const range = stats.max - stats.min;
+      const rangePct = (range / stats.mean * 100).toFixed(1);
+      
+      insights.push(`**${column}**:`);
+      insights.push(`* Average: ${stats.mean.toFixed(2)}`);
+      insights.push(`* Range: ${stats.min.toFixed(2)} to ${stats.max.toFixed(2)} (${rangePct}% variation)`);
+      // Only show standard deviation if it's significant
+      if (stats.std > 0.1 * stats.mean) {
+        insights.push(`* High variability detected (std: ${stats.std.toFixed(2)})`);
+      }
+      insights.push("");
     });
+    
+    if (numericCols.length > 5) {
+      insights.push(`*Note: Showing metrics for 5 out of ${numericCols.length} numeric columns*`);
+      insights.push("");
+    }
   }
   
   // Add insights about categorical columns
-  if (Object.keys(categoricalColumns).length > 0) {
-    insights.push("\n## Categorical Variables");
+  if (categoricalCols.length > 0) {
+    insights.push("## Categorical Breakdown");
     
-    Object.entries(categoricalColumns).forEach(([column, stats]) => {
-      insights.push(`- **${column}**: Contains ${stats.unique_values} unique values. Most common is "${stats.most_common}" (${stats.frequency} occurrences)`);
+    // Show the top 3 categorical columns with the most unique values
+    const topCategorical = Object.entries(categoricalColumns)
+      .sort((a, b) => b[1].unique_values - a[1].unique_values)
+      .slice(0, 3);
+    
+    topCategorical.forEach(([column, stats]) => {
+      const dominancePercent = (stats.frequency / stats.unique_values * 100).toFixed(1);
+      
+      insights.push(`**${column}**:`);
+      insights.push(`* Contains ${stats.unique_values} distinct values`);
+      insights.push(`* Most common: "${stats.most_common}" (appears ${stats.frequency} times)`);
+      
+      if (parseFloat(dominancePercent) > 50) {
+        insights.push(`* "${stats.most_common}" is dominant in this category`);
+      }
+      insights.push("");
     });
+    
+    if (categoricalCols.length > 3) {
+      insights.push(`*Note: Showing details for 3 out of ${categoricalCols.length} categorical columns*`);
+      insights.push("");
+    }
   }
   
   // Add insights about correlations
-  if (Object.keys(correlations).length > 0) {
-    insights.push("\n## Correlations");
+  if (numericCols.length > 1) {
+    insights.push("## Relationships Between Variables");
     
-    const numericCols = Object.keys(numericColumns);
     const strongCorrelations: string[] = [];
+    const moderateCorrelations: string[] = [];
     
-    // Find strong correlations (threshold: 0.7)
+    // Find correlations of different strengths
     for (let i = 0; i < numericCols.length; i++) {
       const col1 = numericCols[i];
       
       for (let j = i + 1; j < numericCols.length; j++) {
         const col2 = numericCols[j];
         const corrValue = correlations[col1][col2];
+        const absCorr = Math.abs(corrValue);
         
-        if (Math.abs(corrValue) > 0.7) {
+        if (absCorr > 0.7) {
           const direction = corrValue > 0 ? "positive" : "negative";
-          strongCorrelations.push(`- Strong ${direction} correlation (${corrValue.toFixed(2)}) between **${col1}** and **${col2}**`);
+          strongCorrelations.push(`* Strong ${direction} relationship between **${col1}** and **${col2}** (${(corrValue * 100).toFixed(0)}%)`);
+        } else if (absCorr > 0.4) {
+          const direction = corrValue > 0 ? "positive" : "negative";
+          moderateCorrelations.push(`* Moderate ${direction} relationship between **${col1}** and **${col2}** (${(corrValue * 100).toFixed(0)}%)`);
         }
       }
     }
     
     if (strongCorrelations.length > 0) {
+      insights.push("### Strong Relationships");
+      insights.push("These variables move together consistently:");
       insights.push(...strongCorrelations);
-    } else {
-      insights.push("- No strong correlations found between variables");
+      insights.push("");
+    }
+    
+    if (moderateCorrelations.length > 0) {
+      insights.push("### Moderate Relationships");
+      insights.push("These variables show some connection:");
+      insights.push(...moderateCorrelations.slice(0, 3)); // Limit to 3 moderate correlations
+      
+      if (moderateCorrelations.length > 3) {
+        insights.push(`*And ${moderateCorrelations.length - 3} more moderate relationships*`);
+      }
+      insights.push("");
+    }
+    
+    if (strongCorrelations.length === 0 && moderateCorrelations.length === 0) {
+      insights.push("No significant relationships found between variables. Your data features appear to be independent of each other.");
+      insights.push("");
     }
   }
   
-  // Add recommendations
-  insights.push("\n## Recommendations");
-  insights.push("- Consider exploring the data further with more specialized analysis");
-  insights.push("- Check for any data quality issues in extreme values");
+  // Add key takeaways and recommendations
+  insights.push("## Key Takeaways");
+  
+  // Generate dynamic takeaways based on the data
+  const takeaways: string[] = [];
+  
+  if (numericCols.length > 0) {
+    takeaways.push("* Your data contains measurable metrics that can be used for quantitative analysis");
+  }
+  
+  if (Object.values(numericColumns).some(stats => stats.std > 0.5 * stats.mean)) {
+    takeaways.push("* High variability detected in some numeric fields - consider looking for outliers");
+  }
+  
+  if (categoricalCols.length > 0) {
+    const highCardinalityCols = Object.entries(categoricalColumns)
+      .filter(([_, stats]) => stats.unique_values > 10)
+      .map(([col, _]) => col);
+      
+    if (highCardinalityCols.length > 0) {
+      takeaways.push(`* High cardinality in categorical columns (${highCardinalityCols.join(", ")}) may benefit from grouping`);
+    }
+  }
+  
+  // Check for strong correlations
+  let hasStrongCorrelations = false;
+  if (numericCols.length > 1) {
+    // Check if any correlation is strong (above 0.7)
+    for (let i = 0; i < numericCols.length && !hasStrongCorrelations; i++) {
+      const col1 = numericCols[i];
+      for (let j = i + 1; j < numericCols.length && !hasStrongCorrelations; j++) {
+        const col2 = numericCols[j];
+        if (Math.abs(correlations[col1][col2]) > 0.7) {
+          hasStrongCorrelations = true;
+        }
+      }
+    }
+    
+    if (hasStrongCorrelations) {
+      takeaways.push("* Strong correlations indicate potential causal relationships worth investigating");
+    }
+  }
+  
+  // Add generic takeaways if we couldn't generate specific ones
+  if (takeaways.length === 0) {
+    takeaways.push("* This dataset provides a good foundation for further exploration");
+    takeaways.push("* Consider collecting additional data to enhance analysis possibilities");
+  }
+  
+  insights.push(...takeaways);
+  insights.push("");
+  
+  // Add actionable next steps
+  insights.push("## Next Steps");
+  insights.push("* Explore the visualizations to identify patterns and trends");
+  
+  if (numericCols.length > 1) {
+    insights.push("* Use correlation data to identify which variables may predict others");
+  }
+  
+  if (categoricalCols.length > 0) {
+    insights.push("* Analyze category distributions to better understand your data segments");
+  }
+  
+  if (numericCols.length > 0) {
+    insights.push("* Check for outliers in numeric fields that might be skewing results");
+  }
   
   return insights.join("\n");
 }
