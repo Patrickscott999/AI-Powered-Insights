@@ -227,203 +227,211 @@ function generateInsights(
   const totalColumns = numericCols.length + categoricalCols.length;
   
   const insights: string[] = [
-    "# Data Analysis Summary",
+    "# 📊 Your Data at a Glance",
     "",
-    `Your dataset contains ${totalColumns} columns: ${numericCols.length} numeric and ${categoricalCols.length} categorical.`,
+    `Your dataset has ${totalColumns} different types of information: ${numericCols.length} with numbers and ${categoricalCols.length} with categories.`,
     ""
   ];
   
   // Add insights about numeric columns
   if (numericCols.length > 0) {
-    insights.push("## Key Numeric Metrics");
+    insights.push("## 💰 Transaction Highlights");
     
-    // Find column with highest and lowest average
-    if (numericCols.length > 1) {
-      const highestAvg = Object.entries(numericColumns).reduce((prev, curr) => 
-        prev[1].mean > curr[1].mean ? prev : curr
-      );
-      
-      const lowestAvg = Object.entries(numericColumns).reduce((prev, curr) => 
-        prev[1].mean < curr[1].mean ? prev : curr
-      );
-      
-      insights.push(`* **${highestAvg[0]}** has the highest average at **${highestAvg[1].mean.toFixed(2)}**`);
-      insights.push(`* **${lowestAvg[0]}** has the lowest average at **${lowestAvg[1].mean.toFixed(2)}**`);
-      insights.push("");
-    }
-    
-    // Only show detailed stats for up to 5 columns to avoid overwhelming the user
-    const topColumns = numericCols.slice(0, 5);
-    insights.push("### Detailed Metrics");
-    
-    topColumns.forEach(column => {
+    // Highlight key numeric metrics
+    numericCols.forEach(column => {
       const stats = numericColumns[column];
-      const range = stats.max - stats.min;
-      const rangePct = (range / stats.mean * 100).toFixed(1);
+      const formattedMean = stats.mean.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      const formattedMin = stats.min.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      const formattedMax = stats.max.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
       
-      insights.push(`**${column}**:`);
-      insights.push(`* Average: ${stats.mean.toFixed(2)}`);
-      insights.push(`* Range: ${stats.min.toFixed(2)} to ${stats.max.toFixed(2)} (${rangePct}% variation)`);
-      // Only show standard deviation if it's significant
-      if (stats.std > 0.1 * stats.mean) {
-        insights.push(`* High variability detected (std: ${stats.std.toFixed(2)})`);
+      insights.push(`Your average ${column.toLowerCase()} is **$${formattedMean}**`);
+      insights.push(`* ${column}s range from $${formattedMin} to $${formattedMax}`);
+      
+      // Check for high variation
+      const range = stats.max - stats.min;
+      const rangePct = (range / stats.mean * 100);
+      if (rangePct > 100) {
+        insights.push(`* There's quite a bit of variation between your smallest and largest ${column.toLowerCase()}s`);
       }
+      
       insights.push("");
     });
-    
-    if (numericCols.length > 5) {
-      insights.push(`*Note: Showing metrics for 5 out of ${numericCols.length} numeric columns*`);
-      insights.push("");
-    }
   }
   
   // Add insights about categorical columns
   if (categoricalCols.length > 0) {
-    insights.push("## Categorical Breakdown");
+    insights.push("## 🔍 What's in Your Data");
     
-    // Show the top 3 categorical columns with the most unique values
-    const topCategorical = Object.entries(categoricalColumns)
-      .sort((a, b) => b[1].unique_values - a[1].unique_values)
-      .slice(0, 3);
-    
-    topCategorical.forEach(([column, stats]) => {
-      const dominancePercent = (stats.frequency / stats.unique_values * 100).toFixed(1);
+    // Check for product-like columns
+    const productColumns = categoricalCols.filter(col => 
+      col.toLowerCase().includes('product') || 
+      col.toLowerCase().includes('item') || 
+      col.toLowerCase() === 'good');
       
-      insights.push(`**${column}**:`);
-      insights.push(`* Contains ${stats.unique_values} distinct values`);
-      insights.push(`* Most common: "${stats.most_common}" (appears ${stats.frequency} times)`);
-      
-      if (parseFloat(dominancePercent) > 50) {
-        insights.push(`* "${stats.most_common}" is dominant in this category`);
-      }
-      insights.push("");
-    });
+    if (productColumns.length > 0) {
+      insights.push("**Popular Products**");
+      productColumns.forEach(col => {
+        const stats = categoricalColumns[col];
+        insights.push(`* ${stats.most_common} is your star product! It appears ${stats.frequency.toLocaleString()} times`);
+        insights.push(`* You have ${stats.unique_values} different products in total`);
+        insights.push("");
+      });
+    }
     
-    if (categoricalCols.length > 3) {
-      insights.push(`*Note: Showing details for 3 out of ${categoricalCols.length} categorical columns*`);
+    // Check for time-related columns
+    const timeColumns = categoricalCols.filter(col => 
+      col.toLowerCase().includes('period') || 
+      col.toLowerCase().includes('day') || 
+      col.toLowerCase().includes('time'));
+      
+    if (timeColumns.length > 0) {
+      insights.push("**Customer Visit Patterns**");
+      timeColumns.forEach(col => {
+        const stats = categoricalColumns[col];
+        insights.push(`* ${capitalizeFirst(stats.most_common)}s are your busiest time (${stats.frequency.toLocaleString()} transactions)`);
+      });
       insights.push("");
     }
-  }
-  
-  // Add insights about correlations
-  if (numericCols.length > 1) {
-    insights.push("## Relationships Between Variables");
     
-    const strongCorrelations: string[] = [];
-    const moderateCorrelations: string[] = [];
-    
-    // Find correlations of different strengths
-    for (let i = 0; i < numericCols.length; i++) {
-      const col1 = numericCols[i];
-      
-      for (let j = i + 1; j < numericCols.length; j++) {
-        const col2 = numericCols[j];
-        const corrValue = correlations[col1][col2];
-        const absCorr = Math.abs(corrValue);
-        
-        if (absCorr > 0.7) {
-          const direction = corrValue > 0 ? "positive" : "negative";
-          strongCorrelations.push(`* Strong ${direction} relationship between **${col1}** and **${col2}** (${(corrValue * 100).toFixed(0)}%)`);
-        } else if (absCorr > 0.4) {
-          const direction = corrValue > 0 ? "positive" : "negative";
-          moderateCorrelations.push(`* Moderate ${direction} relationship between **${col1}** and **${col2}** (${(corrValue * 100).toFixed(0)}%)`);
+    // Check for other important categorical columns
+    categoricalCols
+      .filter(col => !productColumns.includes(col) && !timeColumns.includes(col))
+      .slice(0, 2) // Limit to 2 most important other columns
+      .forEach(col => {
+        const stats = categoricalColumns[col];
+        if (stats.unique_values < 10) { // Only show if it has a reasonable number of categories
+          insights.push(`**${capitalizeFirst(col)} Breakdown**`);
+          insights.push(`* Most common: ${stats.most_common} (${stats.frequency.toLocaleString()} instances)`);
+          insights.push(`* You have ${stats.unique_values} different ${col.toLowerCase()} categories`);
+          insights.push("");
         }
-      }
-    }
-    
-    if (strongCorrelations.length > 0) {
-      insights.push("### Strong Relationships");
-      insights.push("These variables move together consistently:");
-      insights.push(...strongCorrelations);
-      insights.push("");
-    }
-    
-    if (moderateCorrelations.length > 0) {
-      insights.push("### Moderate Relationships");
-      insights.push("These variables show some connection:");
-      insights.push(...moderateCorrelations.slice(0, 3)); // Limit to 3 moderate correlations
-      
-      if (moderateCorrelations.length > 3) {
-        insights.push(`*And ${moderateCorrelations.length - 3} more moderate relationships*`);
-      }
-      insights.push("");
-    }
-    
-    if (strongCorrelations.length === 0 && moderateCorrelations.length === 0) {
-      insights.push("No significant relationships found between variables. Your data features appear to be independent of each other.");
-      insights.push("");
-    }
+      });
   }
   
-  // Add key takeaways and recommendations
-  insights.push("## Key Takeaways");
+  // Add key takeaways
+  insights.push("## 💡 Quick Takeaways");
   
   // Generate dynamic takeaways based on the data
   const takeaways: string[] = [];
   
-  if (numericCols.length > 0) {
-    takeaways.push("* Your data contains measurable metrics that can be used for quantitative analysis");
-  }
-  
-  if (Object.values(numericColumns).some(stats => stats.std > 0.5 * stats.mean)) {
-    takeaways.push("* High variability detected in some numeric fields - consider looking for outliers");
-  }
-  
-  if (categoricalCols.length > 0) {
-    const highCardinalityCols = Object.entries(categoricalColumns)
-      .filter(([_, stats]) => stats.unique_values > 10)
-      .map(([col, _]) => col);
-      
-    if (highCardinalityCols.length > 0) {
-      takeaways.push(`* High cardinality in categorical columns (${highCardinalityCols.join(", ")}) may benefit from grouping`);
-    }
-  }
-  
-  // Check for strong correlations
-  let hasStrongCorrelations = false;
-  if (numericCols.length > 1) {
-    // Check if any correlation is strong (above 0.7)
-    for (let i = 0; i < numericCols.length && !hasStrongCorrelations; i++) {
-      const col1 = numericCols[i];
-      for (let j = i + 1; j < numericCols.length && !hasStrongCorrelations; j++) {
-        const col2 = numericCols[j];
-        if (Math.abs(correlations[col1][col2]) > 0.7) {
-          hasStrongCorrelations = true;
-        }
-      }
-    }
+  // Business rhythm takeaway
+  if (categoricalCols.length > 1) {
+    let businessRhythm = "Your business runs primarily on ";
+    const timePatterns: string[] = [];
     
-    if (hasStrongCorrelations) {
-      takeaways.push("* Strong correlations indicate potential causal relationships worth investigating");
+    // Check time patterns
+    categoricalCols.forEach(col => {
+      if (col.toLowerCase().includes('period') || col.toLowerCase().includes('day')) {
+        timePatterns.push(categoricalColumns[col].most_common);
+      }
+    });
+    
+    // Check product patterns
+    let topProduct = "";
+    categoricalCols.forEach(col => {
+      if (col.toLowerCase().includes('product') || col.toLowerCase().includes('item')) {
+        topProduct = categoricalColumns[col].most_common;
+      }
+    });
+    
+    if (timePatterns.length > 0 && topProduct) {
+      businessRhythm += timePatterns.join(' ') + ' ' + topProduct.toLowerCase() + ' sales';
+      takeaways.push(`* **Business Rhythm**: ${businessRhythm}`);
+    }
+  }
+  
+  // Product mix takeaway
+  const productCol = categoricalCols.find(col => 
+    col.toLowerCase().includes('product') || 
+    col.toLowerCase().includes('item'));
+    
+  if (productCol) {
+    const stats = categoricalColumns[productCol];
+    const dominanceRatio = stats.frequency / stats.unique_values;
+    
+    if (dominanceRatio > 20) {
+      takeaways.push(`* **Product Mix**: ${stats.most_common} dominates your sales - consider if you want to promote other products`);
+    } else {
+      takeaways.push(`* **Product Mix**: Your sales are relatively balanced across your ${stats.unique_values} products`);
+    }
+  }
+  
+  // Customer patterns
+  const dayTypeCol = categoricalCols.find(col => col.toLowerCase().includes('weekday') || col.toLowerCase().includes('weekend'));
+  if (dayTypeCol) {
+    const stats = categoricalColumns[dayTypeCol];
+    if (stats.most_common.toLowerCase().includes('weekday')) {
+      takeaways.push(`* **Opportunity**: Weekend traffic is significantly lower - potential growth opportunity`);
+    } else {
+      takeaways.push(`* **Opportunity**: Weekday traffic is significantly lower - potential growth opportunity`);
+    }
+  }
+  
+  // Transaction variability
+  if (numericCols.length > 0) {
+    const col = numericCols[0];
+    const stats = numericColumns[col];
+    const variability = stats.std / stats.mean;
+    
+    if (variability > 0.5) {
+      takeaways.push(`* **Customer Behavior**: High variation in ${col.toLowerCase()} sizes suggests diverse customer needs`);
+    } else {
+      takeaways.push(`* **Customer Habits**: Regular patterns suggest loyal customer base`);
     }
   }
   
   // Add generic takeaways if we couldn't generate specific ones
   if (takeaways.length === 0) {
-    takeaways.push("* This dataset provides a good foundation for further exploration");
-    takeaways.push("* Consider collecting additional data to enhance analysis possibilities");
+    takeaways.push("* **Overview**: Your data shows potential for more detailed business analysis");
+    takeaways.push("* **Exploration**: Consider collecting additional data to enhance your insights");
   }
   
   insights.push(...takeaways);
   insights.push("");
   
   // Add actionable next steps
-  insights.push("## Next Steps");
-  insights.push("* Explore the visualizations to identify patterns and trends");
+  insights.push("## ⚡ Quick Wins");
   
-  if (numericCols.length > 1) {
-    insights.push("* Use correlation data to identify which variables may predict others");
+  // Dynamic recommendations based on data
+  const recommendations: string[] = [];
+  
+  // Day-based recommendations
+  if (categoricalCols.some(col => col.toLowerCase().includes('weekday') || col.toLowerCase().includes('weekend'))) {
+    recommendations.push("* Consider a weekend promotion to boost slower days");
   }
   
-  if (categoricalCols.length > 0) {
-    insights.push("* Analyze category distributions to better understand your data segments");
+  // Time-based recommendations
+  if (categoricalCols.some(col => col.toLowerCase().includes('period') || col.toLowerCase().includes('day'))) {
+    recommendations.push("* Create afternoon bundle deals to increase average transaction size");
+    recommendations.push("* Experiment with morning specials to distribute traffic more evenly");
   }
   
-  if (numericCols.length > 0) {
-    insights.push("* Check for outliers in numeric fields that might be skewing results");
+  // Product-based recommendations
+  if (categoricalCols.some(col => col.toLowerCase().includes('product') || col.toLowerCase().includes('item'))) {
+    recommendations.push("* Track your top 5-10 products more closely - these drive your business");
   }
+  
+  // Transaction-based recommendations
+  if (numericCols.some(col => col.toLowerCase().includes('transaction'))) {
+    recommendations.push("* Look for outlier transactions (very large ones) - these might be business accounts good for targeted marketing");
+  }
+  
+  // Add generic recommendations if we couldn't generate specific ones
+  if (recommendations.length === 0) {
+    recommendations.push("* Explore the data visualizations to identify specific patterns");
+    recommendations.push("* Consider more detailed data collection for better insights");
+    recommendations.push("* Review your business metrics regularly to track performance");
+  }
+  
+  insights.push(...recommendations);
   
   return insights.join("\n");
+}
+
+// Helper function to capitalize the first letter of a string
+function capitalizeFirst(str: string): string {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 // Generate time patterns if date-like columns exist
