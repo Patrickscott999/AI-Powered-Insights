@@ -13,7 +13,7 @@
 </p>
 
 <div align="center">
-  <a href="https://ai-powered-insights-jke316pqd-patrick-scotts-projects.vercel.app">View Live Demo</a>
+  <a href="https://ai-powered-business-insights.vercel.app">View Live Demo</a>
 </div>
 
 ---
@@ -80,7 +80,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to see the a
 
 ## 🌐 Deployment
 
-This application is deployed on Vercel at [https://ai-powered-insights-jke316pqd-patrick-scotts-projects.vercel.app](https://ai-powered-insights-jke316pqd-patrick-scotts-projects.vercel.app).
+This application is deployed on Vercel at [https://ai-powered-business-insights.vercel.app](https://ai-powered-business-insights.vercel.app).
 
 To deploy your own version:
 
