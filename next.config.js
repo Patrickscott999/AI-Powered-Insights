@@ -16,6 +16,11 @@ const nextConfig = {
       },
     ];
   },
+  // Add compatibility with Netlify
+  trailingSlash: true,
+  images: {
+    unoptimized: true,
+  },
 }
 
 module.exports = nextConfig 

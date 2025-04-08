@@ -1,9 +1,11 @@
 [build]
   command = "npm run build"
   publish = ".next"
+  functions = "netlify/functions"
 
 [build.environment]
   NEXT_TELEMETRY_DISABLED = "1"
+  NODE_VERSION = "18"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
@@ -19,3 +21,6 @@
 #   from = "/*"
 #   to = "/index.html"
 #   status = 200 
+
+[functions]
+  node_bundler = "esbuild" 

@@ -206,7 +206,7 @@ export function DataVisualizer({ data, statistics }: DataVisualizerProps) {
       return []
     }
     
-    const result = []
+    const result: Array<{x: string, y: string, z: number, value: number}> = []
     const columns = Object.keys(correlationData)
     
     columns.forEach(col1 => {
@@ -526,7 +526,7 @@ export function DataVisualizer({ data, statistics }: DataVisualizerProps) {
                   {Object.entries(anomalies.large_transactions.transactions).slice(0, 10).map(([transaction, count], idx) => (
                     <tr key={idx} className={idx % 2 === 0 ? 'bg-red-50' : 'bg-white'}>
                       <td className="py-1 px-2">{transaction}</td>
-                      <td className="py-1 px-2">{count}</td>
+                      <td className="py-1 px-2">{String(count)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -565,7 +565,7 @@ export function DataVisualizer({ data, statistics }: DataVisualizerProps) {
                   {Object.entries(anomalies.unusual_hours.counts).map(([hour, count], idx) => (
                     <tr key={idx} className={idx % 2 === 0 ? 'bg-blue-50' : 'bg-white'}>
                       <td className="py-1 px-2">{hour}:00</td>
-                      <td className="py-1 px-2">{count}</td>
+                      <td className="py-1 px-2">{String(count)}</td>
                     </tr>
                   ))}
                 </tbody>
