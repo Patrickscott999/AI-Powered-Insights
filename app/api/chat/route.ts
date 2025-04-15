@@ -4,6 +4,12 @@ interface ChatRequest {
   question: string;
   data: any[];
   statistics: any;
+  context?: {
+    recentTopics: string[];
+    mentionedColumns: string[];
+    lastQuestion?: string;
+    preferredVisualization?: string;
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -11,8 +17,8 @@ export async function POST(request: NextRequest) {
     // Parse the request body
     const body = await request.json() as ChatRequest;
     
-    // Extract the question and data
-    const { question, data, statistics } = body;
+    // Extract the question, data and context
+    const { question, data, statistics, context } = body;
     
     if (!question) {
       return NextResponse.json({ error: "No question provided" }, { status: 400 });
@@ -22,8 +28,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No data provided" }, { status: 400 });
     }
     
-    // Generate an answer based on the question and data
-    const answer = generateAnswer(question, data, statistics);
+    // Generate an answer based on the question, data and context
+    const answer = generateAnswer(question, data, statistics, context);
     
     return NextResponse.json({ answer });
   } catch (error) {
@@ -35,11 +41,74 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generateAnswer(question: string, data: any[], statistics: any): string {
+function generateAnswer(
+  question: string, 
+  data: any[], 
+  statistics: any, 
+  context?: ChatRequest['context']
+): string {
   const lowerQuestion = question.toLowerCase();
   
   // Get column names from the first data row
   const columns = Object.keys(data[0] || {});
+  
+  // Use context to enhance the response if available
+  const isFollowUpQuestion = context?.lastQuestion && 
+    (lowerQuestion.includes('it') || 
+     lowerQuestion.includes('this') || 
+     lowerQuestion.includes('they') || 
+     lowerQuestion.includes('those') ||
+     lowerQuestion.length < 15);
+  
+  // Handle follow-up questions
+  if (isFollowUpQuestion && context?.lastQuestion) {
+    // Reference previous context for follow-up questions
+    const previousQuestion = context.lastQuestion.toLowerCase();
+    
+    // Check if this is a follow-up to a specific column
+    if (context.mentionedColumns.length > 0) {
+      const lastMentionedColumn = context.mentionedColumns[0];
+      
+      // If the previous question was about a column, and this one is a follow-up
+      if (previousQuestion.includes(lastMentionedColumn.toLowerCase()) && 
+          (lowerQuestion.includes('why') || lowerQuestion.includes('how') || lowerQuestion.includes('more'))) {
+          
+        // Enhanced follow-up for column stats
+        const isNumeric = statistics?.numeric_columns?.[lastMentionedColumn] !== undefined;
+        
+        if (isNumeric) {
+          const stats = statistics.numeric_columns[lastMentionedColumn];
+          
+          // Provide deeper insights for follow-up questions
+          if (lowerQuestion.includes('why') || lowerQuestion.includes('explain')) {
+            const cv = (stats.std / stats.mean * 100).toFixed(1);
+            return `The variation in ${lastMentionedColumn} (${cv}% coefficient of variation) might be explained by several factors in your business. This could reflect seasonality, different customer segments, or product mix. I recommend analyzing this metric by time period and customer type to identify patterns.`;
+          }
+          
+          if (lowerQuestion.includes('improve') || lowerQuestion.includes('better')) {
+            return `To improve ${lastMentionedColumn} performance, consider targeting the lowest performing segments. Your data shows values as low as ${stats.min}, which is ${((stats.mean - stats.min) / stats.mean * 100).toFixed(1)}% below average. Focus on bringing these up through targeted campaigns or operational improvements.`;
+          }
+        }
+      }
+    }
+    
+    // Check if following up on a previously mentioned topic
+    if (context.recentTopics.length > 0) {
+      const relevantTopic = context.recentTopics.find(topic => 
+        previousQuestion.includes(topic)
+      );
+      
+      if (relevantTopic) {
+        if (relevantTopic === 'correlation' || relevantTopic === 'related') {
+          return `Looking deeper at the correlations in your data, I notice that some relationships might be indicating underlying business patterns. For example, customer segments with higher purchase frequency tend to have different product preferences. You may want to explore creating targeted bundles for these segments.`;
+        }
+        
+        if (relevantTopic === 'trend' || relevantTopic === 'pattern') {
+          return `Examining your trends more closely, I can see that the patterns aren't just random fluctuations - they likely represent real business cycles. Consider how external factors like marketing campaigns, seasonal events, or market conditions might be influencing these patterns.`;
+        }
+      }
+    }
+  }
   
   // Check for basic statistical questions
   if (lowerQuestion.includes("how many rows") || lowerQuestion.includes("how many records")) {
@@ -245,7 +314,22 @@ function generateAnswer(question: string, data: any[], statistics: any): string 
     return insights;
   }
   
-  // Default response
+  // Default response with context awareness
+  const hasContext = context && (context.recentTopics.length > 0 || context.mentionedColumns.length > 0);
+  
+  if (hasContext) {
+    // Provide a more tailored response based on conversation history
+    const topicSuggestion = context?.recentTopics[0] 
+      ? `You've shown interest in ${context.recentTopics[0]}. Try asking more specific questions about this.` 
+      : '';
+      
+    const columnSuggestion = context?.mentionedColumns[0] 
+      ? `For more insights on ${context.mentionedColumns[0]}, ask about trends, distributions, or correlations.` 
+      : '';
+      
+    return `Based on the analyzed data with ${columns.length} fields and ${data.length} records, I can see some patterns. ${topicSuggestion} ${columnSuggestion}`;
+  }
+  
   return `Based on the analyzed data with ${columns.length} fields and ${data.length} records, I can see some patterns. To get more specific insights, try asking about a particular column, correlations, time patterns, or product associations.`;
 }
 

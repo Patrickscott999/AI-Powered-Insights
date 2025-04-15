@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react"
 
 interface InsightsSummaryProps {
-  summary: string
+  summary?: string;
+  data?: any[];
+  statistics?: any;
 }
 
 // Icons for different insight types
@@ -73,16 +75,33 @@ const sectionColors: Record<string, { bg: string, text: string, border: string, 
   }
 };
 
-export function InsightsSummary({ summary }: InsightsSummaryProps) {
+export function InsightsSummary({ summary, data, statistics }: InsightsSummaryProps) {
   const [sections, setSections] = useState<{
     title: string;
     type: string;
     points: { text: string; isHeader: boolean }[];
   }[]>([]);
+  
+  const [generatedSummary, setGeneratedSummary] = useState<string | null>(null);
 
+  // Generate a summary from data and statistics if no summary is provided
   useEffect(() => {
+    if (!summary && data && data.length > 0 && statistics) {
+      // Generate a basic summary from the available data and statistics
+      const basicSummary = generateBasicSummary(data, statistics);
+      setGeneratedSummary(basicSummary);
+    } else if (summary) {
+      setGeneratedSummary(null); // Clear generated summary if a real one is provided
+    }
+  }, [summary, data, statistics]);
+
+  // Process the summary into sections
+  useEffect(() => {
+    const summaryToProcess = summary || generatedSummary;
+    if (!summaryToProcess) return;
+    
     // Split the summary into lines
-    const lines = summary.split('\n').filter(line => line.trim() !== '');
+    const lines = summaryToProcess.split('\n').filter(line => line.trim() !== '');
     
     // Process the markdown structure
     let currentSection: {
@@ -155,7 +174,100 @@ export function InsightsSummary({ summary }: InsightsSummaryProps) {
     }
     
     setSections(processedSections);
-  }, [summary]);
+  }, [summary, generatedSummary]);
+
+  // Function to generate a basic summary from data for client-side use
+  const generateBasicSummary = (data: any[], statistics: any): string => {
+    // Create a reasonably structured summary with sections for different insight types
+    let generatedSummary = "# Business Insights from Your Data\n\n";
+    
+    // 1. Revenue/Value Insights
+    generatedSummary += "## 💰 Revenue Opportunities\n\n";
+    
+    // Check if we have numeric columns that might represent revenue
+    const numericColumns = Object.keys(statistics?.numeric_columns || {});
+    if (numericColumns.length > 0) {
+      const valueCol = numericColumns[0];
+      const stats = statistics.numeric_columns[valueCol];
+      
+      // Add revenue-related insights
+      generatedSummary += `**Value Distribution Analysis:** Your ${valueCol} shows an average of ${stats.mean.toFixed(2)}, with a range from ${stats.min} to ${stats.max}.\n\n`;
+      
+      const variability = stats.std / stats.mean;
+      if (variability > 0.5) {
+        generatedSummary += `**High Variability Alert:** There's significant variation in your ${valueCol} (${(variability * 100).toFixed(0)}% of mean). Consider implementing segmented pricing strategies or investigating outliers.\n\n`;
+      } else {
+        generatedSummary += `**Revenue Optimization:** Your ${valueCol} values are relatively consistent. Focus on gradually increasing your average transaction value through upselling strategies.\n\n`;
+      }
+    } else {
+      generatedSummary += "**Revenue Potential:** Add transaction value data to get specific revenue enhancement recommendations.\n\n";
+    }
+    
+    // 2. Product Insights
+    generatedSummary += "## 🏆 Product Performance\n\n";
+    
+    // Check for categorical columns that might represent products
+    const categoricalColumns = Object.keys(statistics?.categorical_columns || {});
+    const productLikeColumns = categoricalColumns.filter(col => 
+      col.toLowerCase().includes('product') || 
+      col.toLowerCase().includes('item') || 
+      col.toLowerCase() === 'good'
+    );
+    
+    if (productLikeColumns.length > 0) {
+      const productCol = productLikeColumns[0];
+      const stats = statistics.categorical_columns[productCol];
+      
+      generatedSummary += `**Top Performer:** "${stats.most_common}" is your best-selling ${productCol} with ${stats.frequency} units sold.\n\n`;
+      generatedSummary += `**Product Mix Optimization:** You have ${stats.unique_values} different ${productCol}s. Consider consolidating low-performers and investing more in your top products.\n\n`;
+    } else if (categoricalColumns.length > 0) {
+      const firstCatCol = categoricalColumns[0];
+      const stats = statistics.categorical_columns[firstCatCol];
+      
+      generatedSummary += `**Category Distribution:** Your top ${firstCatCol} is "${stats.most_common}" representing ${((stats.frequency / data.length) * 100).toFixed(1)}% of your data.\n\n`;
+    } else {
+      generatedSummary += "**Product Strategy:** Add product data to receive specific product optimization insights.\n\n";
+    }
+    
+    // 3. Business Strategy Insights
+    generatedSummary += "## 💼 Business Strategies\n\n";
+    
+    // Check for time patterns
+    if (statistics?.time_patterns) {
+      const patterns = statistics.time_patterns;
+      const timeUnit = Object.keys(patterns)[0]; // hourly, daily, etc.
+      if (timeUnit && patterns[timeUnit]) {
+        const timeData = patterns[timeUnit];
+        const maxKey = Object.keys(timeData).reduce((a, b) => timeData[a] > timeData[b] ? a : b);
+        const minKey = Object.keys(timeData).reduce((a, b) => timeData[a] < timeData[b] ? a : b);
+        
+        generatedSummary += `**Operational Timing:** Your peak activity is on ${maxKey} while ${minKey} shows the lowest activity. Consider optimizing staff and resources accordingly.\n\n`;
+      }
+    }
+    
+    // Add associations if available
+    if (statistics?.product_associations) {
+      generatedSummary += "**Cross-Selling Opportunities:** Your data shows product associations that can be leveraged for bundling and cross-selling strategies.\n\n";
+    }
+    
+    // 4. Performance Accelerators
+    generatedSummary += "## 🚀 Performance Accelerators\n\n";
+    
+    // Check for data quality issues
+    if (statistics?.data_quality) {
+      const quality = statistics.data_quality;
+      if (quality.overall_score < 80) {
+        generatedSummary += `**Data Quality Focus:** Improving your data quality (currently at ${quality.overall_score}%) will enhance the accuracy of business insights.\n\n`;
+      } else {
+        generatedSummary += `**Strong Data Foundation:** Your data quality score of ${quality.overall_score}% provides a solid foundation for decision-making.\n\n`;
+      }
+    }
+    
+    // Generic recommendations
+    generatedSummary += "**Action Steps:** Review these insights with your team and prioritize 2-3 specific initiatives for immediate implementation.\n\n";
+    
+    return generatedSummary;
+  };
 
   const formatText = (text: string) => {
     // Replace markdown bold with spans
@@ -170,7 +282,7 @@ export function InsightsSummary({ summary }: InsightsSummaryProps) {
             Our AI has analyzed your data and identified these key business insights:
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             {sections.map((section, index) => {
               const colors = sectionColors[section.type];
               const icon = icons[section.type] || icons.default;
@@ -200,30 +312,18 @@ export function InsightsSummary({ summary }: InsightsSummaryProps) {
                                 dangerouslySetInnerHTML={{ __html: formatText(point.text) }} />
                             </div>
                           );
-                        }
-                        
-                        // Check if it's a bullet point
-                        if (point.text.startsWith('* ')) {
-                          const bulletText = point.text.replace(/^\* /, '');
+                        } else {
+                          // It's a regular point
                           return (
-                            <div key={pointIndex} className="flex items-start group">
-                              <div className={`mr-3 mt-1 flex-shrink-0 w-1.5 h-1.5 rounded-full ${colors.bg} border ${colors.border}`}></div>
+                            <div key={pointIndex} className="ml-1 flex items-start">
+                              <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mt-2 mr-2 flex-shrink-0"></div>
                               <div 
-                                className="text-sm text-slate-700 flex-1"
-                                dangerouslySetInnerHTML={{ __html: formatText(bulletText) }}
+                                className="text-sm text-slate-600"
+                                dangerouslySetInnerHTML={{ __html: formatText(point.text) }}
                               />
                             </div>
                           );
                         }
-                        
-                        // Regular text
-                        return (
-                          <p 
-                            key={pointIndex} 
-                            className="text-sm text-slate-600 pl-2"
-                            dangerouslySetInnerHTML={{ __html: formatText(point.text) }}
-                          />
-                        );
                       })}
                     </div>
                   </div>
@@ -231,24 +331,14 @@ export function InsightsSummary({ summary }: InsightsSummaryProps) {
               );
             })}
           </div>
-          
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 text-sm text-slate-600 flex items-center mt-8">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-slate-500 mr-2">
-              <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm-1.72 6.97a.75.75 0 10-1.06 1.06L10.94 12l-1.72 1.72a.75.75 0 101.06 1.06L12 13.06l1.72 1.72a.75.75 0 101.06-1.06L13.06 12l1.72-1.72a.75.75 0 10-1.06-1.06L12 10.94l-1.72-1.72z" clipRule="evenodd" />
-            </svg>
-            <p>
-              These insights are based on your current data patterns. For a deeper analysis, consider adding more data fields like customer information or cost figures.
-            </p>
-          </div>
         </>
       ) : (
-        <div className="bg-gray-50 rounded-lg p-10 text-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto text-slate-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p className="italic text-slate-500">No insights available.</p>
+        <div className="text-center py-8 text-slate-500">
+          {(data && data.length > 0) ? 
+            "Analyzing your data to generate insights..." : 
+            "Upload data to generate business insights"}
         </div>
       )}
     </div>
-  )
+  );
 }

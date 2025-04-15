@@ -29,13 +29,17 @@ import { DataQuality } from "./data-quality"
 interface DataVisualizerProps {
   data: any[]
   statistics?: any
+  selectedVisualization?: {
+    type: string;
+    config: any;
+  }
 }
 
 type ChartType = "bar" | "line" | "pie" | "heatmap"
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'];
 
-export function DataVisualizer({ data, statistics }: DataVisualizerProps) {
+export function DataVisualizer({ data, statistics, selectedVisualization }: DataVisualizerProps) {
   const [selectedColumn, setSelectedColumn] = useState<string>("")
   const [chartType, setChartType] = useState<ChartType>("bar")
   const [aggregatedData, setAggregatedData] = useState<any[]>([])
@@ -577,6 +581,44 @@ export function DataVisualizer({ data, statistics }: DataVisualizerProps) {
       </div>
     )
   }
+
+  // Handle visualization requests from chat
+  useEffect(() => {
+    if (selectedVisualization && selectedVisualization.type && selectedVisualization.config) {
+      // Switch to the appropriate tab based on the visualization type
+      if (selectedVisualization.type === 'line') {
+        setActiveTab('time');
+        
+        // Set appropriate time series configuration
+        if (selectedVisualization.config.xAxis) {
+          // Set time column if available
+          if (statistics?.time_patterns) {
+            const timeMetrics = Object.keys(statistics.time_patterns);
+            if (timeMetrics.includes(selectedVisualization.config.xAxis)) {
+              setTimeMetric(selectedVisualization.config.xAxis);
+            }
+          }
+        }
+      } 
+      else if (selectedVisualization.type === 'scatter') {
+        setActiveTab('correlations');
+      }
+      else if (selectedVisualization.type === 'bar' || selectedVisualization.type === 'pie') {
+        setActiveTab('standard');
+        
+        // Set the selected column if specified
+        if (selectedVisualization.config.xAxis || selectedVisualization.config.category) {
+          const columnToSelect = selectedVisualization.config.xAxis || selectedVisualization.config.category;
+          if (columnToSelect && (categoricalColumns.includes(columnToSelect) || numericColumns.includes(columnToSelect))) {
+            setSelectedColumn(columnToSelect);
+          }
+        }
+        
+        // Set the appropriate chart type
+        setChartType(selectedVisualization.type as ChartType);
+      }
+    }
+  }, [selectedVisualization, categoricalColumns, numericColumns, statistics]);
 
   return (
     <div>
