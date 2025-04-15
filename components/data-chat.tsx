@@ -4,7 +4,13 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { ScrollArea } from './ui/scroll-area'
-import { ChevronRight, BarChart, LineChart as LineChartIcon, PieChart, ScatterChart, Info } from 'lucide-react'
+import { ChevronRight, BarChart, LineChart as LineChartIcon, PieChart, ScatterChart, Info, AlertCircle } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface DataChatProps {
   data: any[] | null
@@ -31,6 +37,13 @@ interface ConversationContext {
   mentionedColumns: string[];
   lastQuestion?: string;
   preferredVisualization?: string;
+}
+
+// Add a type for quality insights tooltips
+type QualityTooltip = {
+  trigger: string;
+  content: string;
+  type: 'warning' | 'info' | 'error';
 }
 
 export function DataChat({ data, statistics, onVisualizationRequest }: DataChatProps) {
@@ -275,6 +288,89 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
     }
   };
 
+  // Add a function to process message content and add quality tooltips
+  const processMessageWithQualityInfo = (content: string): JSX.Element => {
+    // If no statistics or data quality info, just return the text
+    if (!statistics?.data_quality) {
+      return <>{content}</>;
+    }
+    
+    // Define quality tooltip triggers and their explanations
+    const qualityTooltips: QualityTooltip[] = [
+      {
+        trigger: 'missing values',
+        content: 'Missing values can lead to incomplete analysis and potentially biased insights.',
+        type: 'warning'
+      },
+      {
+        trigger: 'data quality score',
+        content: `A higher score means more reliable insights. ${
+          statistics.data_quality.overall_score < 70 ? 
+          'Your current score suggests caution when making decisions based on this data.' : 
+          'Your score indicates the data is generally reliable.'
+        }`,
+        type: statistics.data_quality.overall_score < 70 ? 'warning' : 'info'
+      },
+      {
+        trigger: 'outliers',
+        content: 'Extreme values can skew averages and affect the reliability of trends and correlations.',
+        type: 'warning'
+      },
+      {
+        trigger: 'inconsistent format',
+        content: 'Inconsistent formatting can cause values to be misinterpreted or excluded from analysis.',
+        type: 'error'
+      },
+      {
+        trigger: 'duplicates',
+        content: 'Duplicate records can inflate counts and skew distributions.',
+        type: 'warning'
+      }
+    ];
+    
+    // Split content into segments to insert tooltips
+    const segments = content.split(/\b/);
+    
+    return (
+      <TooltipProvider>
+        <p className="text-sm whitespace-pre-wrap">
+          {segments.map((segment, i) => {
+            // Check if this segment matches any quality tooltip trigger
+            const matchedTooltip = qualityTooltips.find(tooltip => 
+              segment.toLowerCase().includes(tooltip.trigger)
+            );
+            
+            if (matchedTooltip) {
+              return (
+                <Tooltip key={i} delayDuration={300}>
+                  <TooltipTrigger asChild>
+                    <span className={`
+                      ${matchedTooltip.type === 'warning' ? 'text-amber-600 underline decoration-dotted underline-offset-4' : ''}
+                      ${matchedTooltip.type === 'error' ? 'text-red-600 underline decoration-dotted underline-offset-4' : ''}
+                      ${matchedTooltip.type === 'info' ? 'text-blue-600 underline decoration-dotted underline-offset-4' : ''}
+                      cursor-help
+                    `}>
+                      {segment}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-sm">
+                    <div className="flex">
+                      <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
+                      <span>{matchedTooltip.content}</span>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
+            
+            // Just return the regular text for non-matched segments
+            return segment;
+          })}
+        </p>
+      </TooltipProvider>
+    );
+  };
+
   return (
     <div className="flex flex-col h-[400px] bg-white rounded-xl overflow-hidden border border-slate-200">
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 text-white">
@@ -296,7 +392,12 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
                       : 'bg-slate-100 text-slate-800 rounded-bl-none'
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {message.role === 'user' ? (
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  ) : (
+                    // Use the enhanced message processor for assistant messages
+                    processMessageWithQualityInfo(message.content)
+                  )}
                 </div>
               </div>
               

@@ -253,7 +253,133 @@ function generateAnswer(
     }
   }
   
-  // Product association questions remain the same...
+  // Add a new section for data quality questions after the time pattern questions
+  if (lowerQuestion.includes("quality") || lowerQuestion.includes("missing") || 
+      lowerQuestion.includes("data issue") || lowerQuestion.includes("problem") ||
+      lowerQuestion.includes("reliability") || lowerQuestion.includes("accuracy")) {
+    
+    if (statistics?.data_quality) {
+      const quality = statistics.data_quality;
+      
+      // Overall quality score and rating
+      let response = `Your data quality score is ${quality.overall_score}% (${quality.rating}). `;
+      
+      // Missing values
+      if (quality.missing_values && quality.missing_values.percentage > 0) {
+        response += `${quality.missing_values.percentage}% of your data has missing values. `;
+      }
+      
+      // Column-specific issues
+      if (quality.column_issues && quality.column_issues.length > 0) {
+        const issueCount = quality.column_issues.length;
+        response += `I found issues in ${issueCount} column${issueCount > 1 ? 's' : ''}. `;
+        
+        // Mention the top issue
+        const topIssue = quality.column_issues[0];
+        response += `Most notably, the "${topIssue.column}" column has ${topIssue.issue_type} (${topIssue.percentage}% of values). `;
+      }
+      
+      // Add recommendations based on quality score
+      if (quality.overall_score < 60) {
+        response += "\n\nYour data has significant quality issues that could affect the reliability of insights. ";
+        
+        if (quality.recommendations && quality.recommendations.length > 0) {
+          response += "I recommend:\n";
+          quality.recommendations.slice(0, 3).forEach((rec: string) => {
+            response += `- ${rec}\n`;
+          });
+        }
+      } else if (quality.overall_score < 80) {
+        response += "\n\nYour data has some quality issues that could affect certain analyses. ";
+        
+        if (quality.recommendations && quality.recommendations.length > 0) {
+          response += "Consider addressing these issues:\n";
+          quality.recommendations.slice(0, 2).forEach((rec: string) => {
+            response += `- ${rec}\n`;
+          });
+        }
+      } else {
+        response += "\n\nYour data quality is generally good, but there's still room for improvement. ";
+        
+        if (quality.recommendations && quality.recommendations.length > 0) {
+          response += `One tip: ${quality.recommendations[0]}`;
+        }
+      }
+      
+      // Suggest viewing the data quality tab
+      response += "\n\nYou can view more detailed quality metrics in the 'Data Quality' tab of the visualizer.";
+      
+      return response;
+    } else {
+      return "I don't have detailed data quality information for this dataset. Consider using tools like data profiling or validation to check for issues like missing values, outliers, or inconsistent formats.";
+    }
+  }
+  
+  // Handle specific questions about missing data
+  if (lowerQuestion.includes("missing") || lowerQuestion.includes("empty") || 
+      lowerQuestion.includes("null") || lowerQuestion.includes("na values")) {
+    
+    if (statistics?.data_quality?.missing_values) {
+      const missing = statistics.data_quality.missing_values;
+      
+      let response = `Your dataset has ${missing.percentage}% missing values overall. `;
+      
+      if (missing.columns && missing.columns.length > 0) {
+        response += "Columns with the most missing values:\n";
+        
+        missing.columns.slice(0, 3).forEach((col: { name: string; percentage: number }) => {
+          response += `- ${col.name}: ${col.percentage}% missing\n`;
+        });
+        
+        // Add business impact
+        response += "\nMissing values can impact your analysis by:";
+        response += "\n- Creating biased insights if data isn't missing randomly";
+        response += "\n- Reducing statistical power for correlation and trend analysis";
+        response += "\n- Potentially omitting important segments or time periods";
+        
+        // Add recommendations
+        if (missing.percentage > 20) {
+          response += "\n\nI recommend addressing these missing values before making major business decisions based on this data.";
+        } else if (missing.percentage > 5) {
+          response += "\n\nConsider using imputation techniques or filtering strategies when analyzing the affected columns.";
+        } else {
+          response += "\n\nThe level of missing data is low enough that it shouldn't significantly impact most analyses.";
+        }
+      }
+      
+      return response;
+    }
+  }
+  
+  // Handle questions about outliers in the data
+  if (lowerQuestion.includes("outlier") || lowerQuestion.includes("extreme value") || 
+      lowerQuestion.includes("anomaly") || lowerQuestion.includes("unusual")) {
+    
+    if (statistics?.data_quality?.outliers) {
+      const outliers = statistics.data_quality.outliers;
+      
+      let response = `I detected ${outliers.count} outliers across ${outliers.columns_affected} columns in your data. `;
+      
+      if (outliers.details && outliers.details.length > 0) {
+        response += "Notable outliers:\n";
+        
+        outliers.details.slice(0, 3).forEach((detail: { column: string; direction: string; threshold: number; percentage: number }) => {
+          response += `- ${detail.column}: Values ${detail.direction === 'high' ? 'above' : 'below'} ${detail.threshold} (${detail.percentage}% of values)\n`;
+        });
+        
+        // Add business context
+        response += "\nOutliers can represent:";
+        response += "\n- Data entry errors that should be corrected";
+        response += "\n- Legitimate but unusual business events worth investigating";
+        response += "\n- Opportunities (extremely high sales) or problems (extreme delays)";
+        
+        // Add recommendations
+        response += "\n\nWhen analyzing this data, consider examining these outliers separately to understand their impact on your overall metrics.";
+      }
+      
+      return response;
+    }
+  }
   
   // Business insights with actionable advice
   if (lowerQuestion.includes("insight") || lowerQuestion.includes("suggest") || 
