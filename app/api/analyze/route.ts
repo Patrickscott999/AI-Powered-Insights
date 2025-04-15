@@ -183,6 +183,9 @@ function analyzeData(data: DataRow[]): any {
   // Create simple product associations (for market basket analysis)
   const productAssociations = generateProductAssociations(data);
   
+  // Analyze data quality
+  const dataQuality = assessDataQuality(data, columns);
+  
   // Create simplified statistics structure that matches the frontend expectations
   const statistics = {
     numeric_columns: numericColumns,
@@ -190,6 +193,7 @@ function analyzeData(data: DataRow[]): any {
     correlations,
     time_patterns: timePatterns,
     product_associations: productAssociations,
+    data_quality: dataQuality,
     forecast: {
       trend: 2.5,
       seasonal_periods: "weekly",
@@ -929,6 +933,147 @@ function generateAnomalies(data: DataRow[], numericColumns: Record<string, Numer
   }
   
   return anomalies;
+}
+
+// Assess data quality
+function assessDataQuality(data: DataRow[], columns: string[]): Record<string, any> {
+  const quality: Record<string, any> = {
+    overall_score: 100, // Start with perfect score and reduce based on issues
+    column_issues: {},
+    missing_values: {},
+    recommendations: []
+  };
+  
+  // Track global issues
+  let totalMissingCells = 0;
+  let totalCells = data.length * columns.length;
+  let columnsWithIssues = 0;
+  
+  // Check each column for quality issues
+  columns.forEach(column => {
+    const columnIssues: string[] = [];
+    let missingCount = 0;
+    let inconsistentTypes = 0;
+    let sampleSize = Math.min(100, data.length);
+    
+    // Check for missing values and type consistency
+    for (let i = 0; i < data.length; i++) {
+      const value = data[i][column];
+      
+      // Check for missing values
+      if (value === null || value === undefined || value === '') {
+        missingCount++;
+      }
+      
+      // Check for type consistency in first 100 rows
+      if (i < sampleSize) {
+        if (typeof value !== typeof data[0][column] && value !== null && value !== undefined && value !== '') {
+          inconsistentTypes++;
+        }
+      }
+    }
+    
+    // Record missing values
+    if (missingCount > 0) {
+      const missingPercentage = (missingCount / data.length) * 100;
+      quality.missing_values[column] = {
+        count: missingCount,
+        percentage: parseFloat(missingPercentage.toFixed(1))
+      };
+      totalMissingCells += missingCount;
+      
+      if (missingPercentage > 5) {
+        columnIssues.push(`Missing values (${missingPercentage.toFixed(1)}%)`);
+      }
+    }
+    
+    // Check for type inconsistency
+    if (inconsistentTypes > 0) {
+      const inconsistencyPercentage = (inconsistentTypes / sampleSize) * 100;
+      if (inconsistencyPercentage > 10) {
+        columnIssues.push(`Inconsistent data types (${inconsistencyPercentage.toFixed(1)}%)`);
+      }
+    }
+    
+    // Check if this column is numeric and check for outliers
+    const isNumeric = data.some(row => !isNaN(Number(row[column])));
+    if (isNumeric) {
+      // Get numeric values
+      const values = data
+        .map(row => Number(row[column]))
+        .filter(val => !isNaN(val));
+      
+      // Calculate mean and standard deviation
+      const sum = values.reduce((acc, val) => acc + val, 0);
+      const mean = sum / values.length;
+      const squareDiffs = values.map(value => Math.pow(value - mean, 2));
+      const avgSquareDiff = squareDiffs.reduce((acc, val) => acc + val, 0) / values.length;
+      const std = Math.sqrt(avgSquareDiff);
+      
+      // Count extreme outliers (more than 3 standard deviations from mean)
+      const extremeOutliers = values.filter(val => Math.abs(val - mean) > 3 * std).length;
+      const outlierPercentage = (extremeOutliers / values.length) * 100;
+      
+      if (outlierPercentage > 1) {
+        columnIssues.push(`Contains outliers (${outlierPercentage.toFixed(1)}% extreme values)`);
+      }
+    }
+    
+    // Record issues for this column if any
+    if (columnIssues.length > 0) {
+      quality.column_issues[column] = columnIssues;
+      columnsWithIssues++;
+    }
+  });
+  
+  // Calculate overall data quality score (simple model)
+  const missingPercentage = (totalMissingCells / totalCells) * 100;
+  const columnIssuesPercentage = (columnsWithIssues / columns.length) * 100;
+  
+  // Decrease score based on issues
+  quality.overall_score -= Math.min(30, missingPercentage * 2); // Up to 30 point reduction for missing values
+  quality.overall_score -= Math.min(30, columnIssuesPercentage * 1.5); // Up to 30 point reduction for column issues
+  
+  // Ensure score stays in valid range
+  quality.overall_score = Math.max(0, Math.min(100, Math.round(quality.overall_score)));
+  
+  // Add descriptive rating
+  if (quality.overall_score >= 90) {
+    quality.rating = "Excellent";
+  } else if (quality.overall_score >= 75) {
+    quality.rating = "Good";
+  } else if (quality.overall_score >= 60) {
+    quality.rating = "Fair";
+  } else if (quality.overall_score >= 40) {
+    quality.rating = "Poor";
+  } else {
+    quality.rating = "Very Poor";
+  }
+  
+  // Add recommendations based on issues
+  if (missingPercentage > 5) {
+    quality.recommendations.push("Consider addressing missing values through imputation or filtering.");
+  }
+  
+  if (columnIssuesPercentage > 20) {
+    quality.recommendations.push("Several columns have data quality issues. Review and clean your data before making critical decisions.");
+  }
+  
+  // Add column-specific recommendations
+  Object.entries(quality.column_issues).forEach(([column, issues]) => {
+    if (Array.isArray(issues) && issues.some(issue => issue.includes("outliers"))) {
+      quality.recommendations.push(`Consider treating outliers in the "${column}" column to improve analysis accuracy.`);
+    }
+    
+    if (Array.isArray(issues) && issues.some(issue => issue.includes("Inconsistent data types"))) {
+      quality.recommendations.push(`Standardize data types in the "${column}" column.`);
+    }
+  });
+  
+  // Limit to top 5 recommendations
+  quality.recommendations = quality.recommendations.slice(0, 5);
+  
+  return quality;
 }
 
 export async function POST(request: NextRequest) {
