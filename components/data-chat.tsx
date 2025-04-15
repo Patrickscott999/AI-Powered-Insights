@@ -4,7 +4,17 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { ScrollArea } from './ui/scroll-area'
-import { ChevronRight, BarChart, LineChart as LineChartIcon, PieChart, ScatterChart, Info, AlertCircle } from 'lucide-react'
+import { 
+  ChevronRight, 
+  BarChart, 
+  LineChart as LineChartIcon, 
+  PieChart, 
+  ScatterChart, 
+  TrendingUp, 
+  Sliders as LucideSliders,
+  Info, 
+  AlertCircle 
+} from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -18,10 +28,13 @@ interface DataChatProps {
   onVisualizationRequest?: (type: string, config: any) => void
 }
 
+// Update Message type to include predictive and scenario suggestions
 type Message = {
   role: 'user' | 'assistant'
   content: string
   suggestions?: VisualizationSuggestion[]
+  predictiveSuggestion?: PredictiveSuggestion
+  scenarioSuggestion?: ScenarioSuggestion
 }
 
 type VisualizationSuggestion = {
@@ -29,6 +42,27 @@ type VisualizationSuggestion = {
   title: string
   description: string
   config: any
+}
+
+// Add new types for predictive analytics and what-if scenarios
+type PredictiveSuggestion = {
+  title: string
+  description: string
+  forecastData: any
+}
+
+type ScenarioSuggestion = {
+  title: string
+  description: string
+  scenarios: {
+    name: string
+    description: string
+    metrics: {
+      name: string
+      value: number
+      type: "percentage" | "number" | "currency"
+    }[]
+  }[]
 }
 
 // Create a context interface to store conversation context
@@ -85,7 +119,7 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
     const keywords = question.toLowerCase().split(/\s+/);
     const topics = keywords.filter(word => 
       word.length > 3 && 
-      ['trend', 'compare', 'insight', 'analysis', 'correlation', 'performance', 'recommend'].some(topic => 
+      ['trend', 'compare', 'insight', 'analysis', 'correlation', 'performance', 'recommend', 'predict', 'forecast', 'what if', 'scenario'].some(topic => 
         word.includes(topic)
       )
     );
@@ -234,6 +268,10 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
     setIsLoading(true)
 
     try {
+      // Check for predictive or scenario questions before sending to API
+      const predictiveSuggestion = generatePredictiveSuggestion(input);
+      const scenarioSuggestion = generateScenarioSuggestion(input);
+      
       // Prepare the payload with the user's question, context, and the current data
       const payload = {
         question: input,
@@ -259,11 +297,13 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
       // Generate visualization suggestions
       const suggestions = generateVisualizationSuggestions(input, result.answer);
       
-      // Add assistant response with suggestions
+      // Add assistant response with all relevant suggestions
       setMessages(prev => [...prev, { 
         role: 'assistant', 
         content: result.answer,
-        suggestions: suggestions.length > 0 ? suggestions : undefined
+        suggestions: suggestions.length > 0 ? suggestions : undefined,
+        predictiveSuggestion,
+        scenarioSuggestion
       }])
     } catch (error) {
       console.error('Error processing chat:', error)
@@ -371,6 +411,174 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
     );
   };
 
+  // Add a new function to detect prediction-related questions
+  const generatePredictiveSuggestion = (questionText: string): PredictiveSuggestion | undefined => {
+    if (!statistics?.forecast) return undefined;
+    
+    const lowerQuestion = questionText.toLowerCase();
+    
+    // Check if this is a forecasting question
+    if (lowerQuestion.includes('predict') || 
+        lowerQuestion.includes('forecast') || 
+        lowerQuestion.includes('future') ||
+        lowerQuestion.includes('projection') ||
+        lowerQuestion.includes('next month') ||
+        lowerQuestion.includes('next week') ||
+        lowerQuestion.includes('predict') ||
+        lowerQuestion.includes('expect')) {
+      
+      return {
+        title: 'Sales Forecast',
+        description: 'View predicted future sales and trends',
+        forecastData: statistics.forecast
+      };
+    }
+    
+    return undefined;
+  };
+
+  // Add a new function to detect what-if scenario questions
+  const generateScenarioSuggestion = (questionText: string): ScenarioSuggestion | undefined => {
+    if (!statistics?.forecast) return undefined;
+    
+    const lowerQuestion = questionText.toLowerCase();
+    
+    // Check if this is a what-if or scenario question
+    if (lowerQuestion.includes('what if') || 
+        lowerQuestion.includes('scenario') || 
+        lowerQuestion.includes('simulation') ||
+        lowerQuestion.includes('model') ||
+        lowerQuestion.includes('happens if') ||
+        lowerQuestion.includes('change price') ||
+        lowerQuestion.includes('increase price') ||
+        lowerQuestion.includes('decrease price') ||
+        lowerQuestion.includes('marketing budget')) {
+      
+      // Create pre-defined scenarios based on the question
+      const scenarios: Array<{
+        name: string;
+        description: string;
+        metrics: Array<{
+          name: string;
+          value: number;
+          type: "percentage" | "number" | "currency";
+        }>;
+      }> = [];
+      
+      // Default scenario
+      scenarios.push({
+        name: 'Custom Scenario',
+        description: 'Create your own scenario with custom parameters',
+        metrics: [
+          {
+            name: 'Price Increase',
+            value: 0,
+            type: 'percentage' as const
+          },
+          {
+            name: 'Marketing Budget',
+            value: 0,
+            type: 'percentage' as const
+          },
+          {
+            name: 'Discount Level',
+            value: 0,
+            type: 'percentage' as const
+          }
+        ]
+      });
+      
+      // Add specific scenarios based on the question
+      if (lowerQuestion.includes('price')) {
+        const direction = lowerQuestion.includes('increase') ? 10 : -10;
+        scenarios.push({
+          name: `${direction > 0 ? 'Increase' : 'Decrease'} Price`,
+          description: `Simulates ${Math.abs(direction)}% ${direction > 0 ? 'higher' : 'lower'} prices`,
+          metrics: [
+            {
+              name: 'Price Increase',
+              value: direction,
+              type: 'percentage' as const
+            },
+            {
+              name: 'Marketing Budget',
+              value: 0,
+              type: 'percentage' as const
+            },
+            {
+              name: 'Discount Level',
+              value: 0,
+              type: 'percentage' as const
+            }
+          ]
+        });
+      }
+      
+      if (lowerQuestion.includes('marketing') || lowerQuestion.includes('promotion')) {
+        scenarios.push({
+          name: 'Increased Marketing',
+          description: 'Simulates 30% increased marketing budget',
+          metrics: [
+            {
+              name: 'Price Increase',
+              value: 0,
+              type: 'percentage' as const
+            },
+            {
+              name: 'Marketing Budget',
+              value: 30,
+              type: 'percentage' as const
+            },
+            {
+              name: 'Discount Level',
+              value: 0,
+              type: 'percentage' as const
+            }
+          ]
+        });
+      }
+      
+      return {
+        title: 'What-If Scenario Modeling',
+        description: 'Simulate different business scenarios to see potential outcomes',
+        scenarios
+      };
+    }
+    
+    return undefined;
+  };
+
+  // Add function to handle predictive suggestion click
+  const handlePredictiveSuggestionClick = () => {
+    if (onVisualizationRequest) {
+      // Switch to the forecast tab - this should navigate to the forecast tab in the DataVisualizer
+      onVisualizationRequest('forecast', { showForecast: true });
+      
+      // Add a message about switching to forecast view
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `I've opened the forecast view where you can explore predicted future trends and patterns in detail.`
+      }]);
+    }
+  };
+
+  // Add function to handle scenario suggestion click
+  const handleScenarioSuggestionClick = (scenarioName: string) => {
+    if (onVisualizationRequest) {
+      // Switch to the scenario tab with the selected scenario
+      onVisualizationRequest('forecast', { 
+        showScenario: true,
+        scenarioName
+      });
+      
+      // Add a message about switching to scenario view
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `I've opened the scenario modeling tool with the "${scenarioName}" scenario. You can adjust parameters to see how they would affect your business outcomes.`
+      }]);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[400px] bg-white rounded-xl overflow-hidden border border-slate-200">
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 text-white">
@@ -415,6 +623,57 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
                       <ChevronRight className="h-3 w-3 opacity-50" />
                     </button>
                   ))}
+                </div>
+              )}
+              
+              {/* Predictive forecast suggestion */}
+              {message.role === 'assistant' && message.predictiveSuggestion && (
+                <div className="pl-2 mt-1 mb-2">
+                  <button
+                    onClick={handlePredictiveSuggestionClick}
+                    className="inline-flex items-center px-3 py-1.5 text-xs bg-indigo-50 border border-indigo-200 rounded-full text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  >
+                    <TrendingUp className="h-4 w-4 mr-1.5" />
+                    <span className="mr-0.5">View Sales Forecast</span>
+                    <ChevronRight className="h-3 w-3 opacity-50" />
+                  </button>
+                  <p className="text-xs text-slate-500 mt-1 ml-1">
+                    {message.predictiveSuggestion.description}
+                  </p>
+                </div>
+              )}
+              
+              {/* What-if scenario suggestion */}
+              {message.role === 'assistant' && message.scenarioSuggestion && (
+                <div className="pl-2 mt-1 mb-2">
+                  <div>
+                    <button
+                      onClick={() => handleScenarioSuggestionClick('Custom Scenario')}
+                      className="inline-flex items-center px-3 py-1.5 text-xs bg-amber-50 border border-amber-200 rounded-full text-amber-700 hover:bg-amber-100 transition-colors"
+                    >
+                      <LucideSliders className="h-4 w-4 mr-1.5" />
+                      <span className="mr-0.5">Try What-If Scenarios</span>
+                      <ChevronRight className="h-3 w-3 opacity-50" />
+                    </button>
+                    <p className="text-xs text-slate-500 mt-1 ml-1 mb-2">
+                      {message.scenarioSuggestion.description}
+                    </p>
+                  </div>
+                  
+                  {/* Show specific scenario options if there are more than just the default */}
+                  {message.scenarioSuggestion.scenarios.length > 1 && (
+                    <div className="flex flex-wrap gap-2 ml-1 mt-1">
+                      {message.scenarioSuggestion.scenarios.slice(1).map((scenario, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleScenarioSuggestionClick(scenario.name)}
+                          className="inline-flex items-center px-2 py-1 text-xs bg-white border border-slate-200 rounded-full text-slate-700 hover:bg-slate-50 transition-colors"
+                        >
+                          <span>{scenario.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

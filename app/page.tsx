@@ -53,6 +53,41 @@ export default function Home() {
   
   // Handle visualization request from the chat
   const handleVisualizationRequest = (type: string, config: any) => {
+    // Special handling for forecast and scenario visualization types
+    if (type === 'forecast') {
+      if (config.showForecast) {
+        // Switch to the visualization tab with forecast tab active
+        setActiveTab('visualize');
+        // Add a bit of delay to ensure tab switch happens first
+        setTimeout(() => {
+          // This should be captured by the DataVisualizer component via the selectedVisualization prop
+          setSelectedVisualization({ 
+            type: 'forecast', 
+            config: { active: 'forecast' } 
+          });
+        }, 100);
+        return;
+      }
+      
+      if (config.showScenario) {
+        // Switch to the visualization tab with scenario modeling active
+        setActiveTab('visualize');
+        // Add a bit of delay to ensure tab switch happens first
+        setTimeout(() => {
+          // Pass the scenario name to the WhatIfScenario component via the selectedVisualization prop
+          setSelectedVisualization({ 
+            type: 'forecast', 
+            config: { 
+              active: 'scenario',
+              scenarioName: config.scenarioName 
+            } 
+          });
+        }, 100);
+        return;
+      }
+    }
+    
+    // Default behavior for other visualization types (bar, line, pie, scatter)
     setSelectedVisualization({ type, config });
     setActiveTab('visualize'); // Switch to visualization tab
   };

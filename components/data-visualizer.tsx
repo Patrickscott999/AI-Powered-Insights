@@ -585,19 +585,45 @@ export function DataVisualizer({ data, statistics, selectedVisualization }: Data
 
   // Handle visualization requests from chat
   useEffect(() => {
-    if (selectedVisualization && selectedVisualization.type && selectedVisualization.config) {
-      // Switch to the appropriate tab based on the visualization type
-      if (selectedVisualization.type === 'line') {
-        setActiveTab('time');
+    if (!selectedVisualization) return;
+    
+    // Special handling for forecast visualization type which can include forecast or scenario
+    if (selectedVisualization.type === 'forecast') {
+      // Switch to the forecast tab
+      setActiveTab('forecast');
+      
+      // Check if we need to focus on the scenario part of the forecast tab
+      if (selectedVisualization.config?.active === 'scenario') {
+        // TODO: You would add code here to scroll to or focus on the what-if scenario component
+        // For example, if you have a ref on the scenario component, you could focus it
+        const scenarioElement = document.getElementById('what-if-scenario');
+        if (scenarioElement) {
+          setTimeout(() => {
+            scenarioElement.scrollIntoView({ behavior: 'smooth' });
+          }, 300);
+        }
         
-        // Set appropriate time series configuration
-        if (selectedVisualization.config.xAxis) {
-          // Set time column if available
-          if (statistics?.time_patterns) {
-            const timeMetrics = Object.keys(statistics.time_patterns);
-            if (timeMetrics.includes(selectedVisualization.config.xAxis)) {
-              setTimeMetric(selectedVisualization.config.xAxis);
-            }
+        // If there's a specific scenario requested, you could pass it to the WhatIfScenario component
+        // This would require adding state in this component to track the selected scenario
+        if (selectedVisualization.config.scenarioName) {
+          // Example: setSelectedScenario(selectedVisualization.config.scenarioName);
+        }
+      }
+      
+      return;
+    }
+    
+    // Handle other visualization types as before
+    if (selectedVisualization.type === 'line') {
+      setActiveTab('time');
+      
+      // Set appropriate time series configuration
+      if (selectedVisualization.config.xAxis) {
+        // Set time column if available
+        if (statistics?.time_patterns) {
+          const timeMetrics = Object.keys(statistics.time_patterns);
+          if (timeMetrics.includes(selectedVisualization.config.xAxis)) {
+            setTimeMetric(selectedVisualization.config.xAxis);
           }
         }
       } 
@@ -785,7 +811,9 @@ export function DataVisualizer({ data, statistics, selectedVisualization }: Data
         <TabsContent value="forecast" className="mt-0">
           <div className="space-y-6">
             <PredictiveForecast forecastData={statistics?.forecast || {}} />
-            <WhatIfScenario forecastData={statistics?.forecast || {}} />
+            <div id="what-if-scenario">
+              <WhatIfScenario forecastData={statistics?.forecast || {}} />
+            </div>
           </div>
         </TabsContent>
         
