@@ -25,6 +25,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { DataQuality } from "./data-quality"
+import { WhatIfScenario } from "./what-if-scenario"
 
 interface DataVisualizerProps {
   data: any[]
@@ -782,7 +783,10 @@ export function DataVisualizer({ data, statistics, selectedVisualization }: Data
         </TabsContent>
         
         <TabsContent value="forecast" className="mt-0">
-          <PredictiveForecast forecastData={statistics?.forecast || {}} />
+          <div className="space-y-6">
+            <PredictiveForecast forecastData={statistics?.forecast || {}} />
+            <WhatIfScenario forecastData={statistics?.forecast || {}} />
+          </div>
         </TabsContent>
         
         <TabsContent value="segments" className="mt-0">
