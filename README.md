@@ -28,10 +28,6 @@
 
 ## 📸 Screenshots
 
-<p align="center">
-  <i>Add your application screenshots here</i>
-</p>
-
 ## 🧠 How It Works
 
 1. **Upload** your CSV file
