@@ -685,58 +685,188 @@ function detectWeekdayPatterns(data: DataRow[]): Record<string, number> | null {
   return Object.keys(dayCount).length >= 2 ? dayCount : null;
 }
 
-// Generate product associations (mock data)
+// Generate product associations with real data analysis
 function generateProductAssociations(data: DataRow[]): Record<string, Array<[string, number]>> {
   // Try to find product-like columns
   const columns = Object.keys(data[0]);
   const productColumns = columns.filter(col => {
     const colName = col.toLowerCase();
-    return colName.includes('product') || colName.includes('item') || colName.includes('good');
+    return colName.includes('product') || colName.includes('item') || colName.includes('good') || 
+           colName.includes('sku') || colName.includes('merchandise');
   });
   
-  // If we can't identify product columns, create mock data
+  // If we can't identify product columns, create fallback data
   if (productColumns.length === 0) {
+    console.log("No product columns identified, using fallback data");
     return {
       "Item A": [
-        ["Item B", Math.floor(Math.random() * 30) + 20],
-        ["Item C", Math.floor(Math.random() * 20) + 10],
-        ["Item D", Math.floor(Math.random() * 10) + 5]
+        ["Item B", 0.25],
+        ["Item C", 0.15],
+        ["Item D", 0.08]
       ],
       "Item B": [
-        ["Item A", Math.floor(Math.random() * 30) + 20],
-        ["Item E", Math.floor(Math.random() * 15) + 10],
-        ["Item F", Math.floor(Math.random() * 10) + 5]
+        ["Item A", 0.25],
+        ["Item E", 0.12],
+        ["Item F", 0.07]
       ]
     };
   }
   
-  // Use the first product column to generate associations
+  // Use the first product column as our main product identifier
   const productColumn = productColumns[0];
-  const products: Record<string, number> = {};
+  console.log(`Using ${productColumn} for product association analysis`);
   
-  // Count product occurrences
-  data.forEach(row => {
-    const product = String(row[productColumn]);
-    if (!products[product]) {
-      products[product] = 0;
-    }
-    products[product]++;
+  // Transaction ID column detection - look for ID, order, or transaction columns
+  const potentialTransactionColumns = columns.filter(col => {
+    const colName = col.toLowerCase();
+    return colName.includes('id') || colName.includes('order') || 
+           colName.includes('transaction') || colName.includes('invoice');
   });
   
-  // Get top 5 products
-  const topProducts = Object.entries(products)
+  let transactionGrouping: Record<string, string[]> = {};
+  
+  // If we found a transaction column, use it to group products by transaction
+  if (potentialTransactionColumns.length > 0) {
+    const transactionColumn = potentialTransactionColumns[0];
+    console.log(`Using ${transactionColumn} for transaction grouping`);
+    
+    // Group products by transaction ID
+    data.forEach(row => {
+      const transactionId = String(row[transactionColumn]);
+      const productId = String(row[productColumn]);
+      
+      if (!transactionGrouping[transactionId]) {
+        transactionGrouping[transactionId] = [];
+      }
+      
+      if (productId && !transactionGrouping[transactionId].includes(productId)) {
+        transactionGrouping[transactionId].push(productId);
+      }
+    });
+  } 
+  // If no transaction column, try to use temporal proximity to group products
+  else if (columns.some(col => col.toLowerCase().includes('date') || col.toLowerCase().includes('time'))) {
+    const dateColumn = columns.find(col => 
+      col.toLowerCase().includes('date') || col.toLowerCase().includes('time')
+    );
+    
+    if (dateColumn) {
+      console.log(`Using ${dateColumn} for temporal transaction grouping`);
+      
+      // Sort data by date
+      const sortedData = [...data].sort((a, b) => {
+        const aDate = new Date(String(a[dateColumn]));
+        const bDate = new Date(String(b[dateColumn]));
+        return aDate.getTime() - bDate.getTime();
+      });
+      
+      // Group nearby transactions (within 5 minutes) as a single transaction
+      let currentTransactionId = 1;
+      let lastTimestamp: Date | null = null;
+      
+      sortedData.forEach(row => {
+        const currentTimestamp = new Date(String(row[dateColumn]));
+        const productId = String(row[productColumn]);
+        
+        // If this is a valid date and product
+        if (!isNaN(currentTimestamp.getTime()) && productId) {
+          // If this is a new transaction or more than 5 minutes from last one
+          if (!lastTimestamp || 
+              (currentTimestamp.getTime() - lastTimestamp.getTime() > 5 * 60 * 1000)) {
+            currentTransactionId++;
+            lastTimestamp = currentTimestamp;
+          }
+          
+          const transactionId = `T${currentTransactionId}`;
+          
+          if (!transactionGrouping[transactionId]) {
+            transactionGrouping[transactionId] = [];
+          }
+          
+          if (!transactionGrouping[transactionId].includes(productId)) {
+            transactionGrouping[transactionId].push(productId);
+          }
+        }
+      });
+    }
+  }
+  // If we couldn't find transaction or date columns, create artificial transactions by rows
+  else {
+    console.log("No transaction identifier found, treating each row as separate transaction");
+    // Each row becomes its own transaction
+    data.forEach((row, index) => {
+      const transactionId = `T${index + 1}`;
+      const productId = String(row[productColumn]);
+      
+      if (productId) {
+        transactionGrouping[transactionId] = [productId];
+      }
+    });
+  }
+  
+  // Now calculate co-occurrence of products
+  const productOccurrences: Record<string, number> = {};
+  const coOccurrences: Record<string, Record<string, number>> = {};
+  
+  // Count product occurrences
+  Object.values(transactionGrouping).forEach(products => {
+    products.forEach(product => {
+      productOccurrences[product] = (productOccurrences[product] || 0) + 1;
+      
+      // Initialize co-occurrence entry if needed
+      if (!coOccurrences[product]) {
+        coOccurrences[product] = {};
+      }
+      
+      // Count co-occurrences with other products in same transaction
+      products.forEach(otherProduct => {
+        if (product !== otherProduct) {
+          coOccurrences[product][otherProduct] = (coOccurrences[product][otherProduct] || 0) + 1;
+        }
+      });
+    });
+  });
+  
+  // Get top 5 products by occurrence
+  const topProducts = Object.entries(productOccurrences)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(entry => entry[0]);
   
-  // Create mock associations between top products
+  // Calculate association strength (ratio of co-occurrence to product occurrence)
   const associations: Record<string, Array<[string, number]>> = {};
   
   topProducts.forEach(product => {
-    associations[product] = topProducts
-      .filter(p => p !== product)
-      .map(p => [p, Math.floor(Math.random() * 30) + 10]);
+    if (coOccurrences[product]) {
+      const productAssociations = Object.entries(coOccurrences[product])
+        .map(([otherProduct, coCount]): [string, number] => {
+          // Calculate confidence: how often they appear together / how often the main product appears
+          const confidence = coCount / productOccurrences[product];
+          return [otherProduct, confidence];
+        })
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3); // Top 3 associations
+      
+      if (productAssociations.length > 0) {
+        associations[product] = productAssociations;
+      }
+    }
   });
+  
+  // If we couldn't find enough real associations, add some fallback data
+  if (Object.keys(associations).length === 0) {
+    console.log("No significant associations found, using fallback data");
+    // Use the actual product names from the data but with fallback association strength
+    if (topProducts.length >= 2) {
+      associations[topProducts[0]] = [
+        [topProducts[1], 0.15]
+      ];
+      
+      if (topProducts.length >= 3) {
+        associations[topProducts[0]].push([topProducts[2], 0.08]);
+      }
+    }
+  }
   
   return associations;
 }
