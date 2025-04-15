@@ -483,47 +483,142 @@ function capitalizeFirst(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// Generate time patterns if date-like columns exist
+// Generate time patterns
 function generateTimePatterns(data: DataRow[]): Record<string, Record<string, number>> {
-  const timePatterns: Record<string, Record<string, number>> = {
-    hourly: {},
-    daily: {}
-  };
+  const timePatterns: Record<string, Record<string, number>> = {};
   
-  // Try to identify date columns
+  // Look for date-related columns
   const columns = Object.keys(data[0]);
   const dateColumns = columns.filter(col => {
-    const colName = col.toLowerCase();
-    return colName.includes('date') || colName.includes('time') || colName.includes('day');
+    const lowerCol = col.toLowerCase();
+    return lowerCol.includes('date') || 
+           lowerCol.includes('time') || 
+           lowerCol.includes('day') || 
+           lowerCol.includes('week') || 
+           lowerCol.includes('month');
   });
   
-  if (dateColumns.length === 0) {
-    // Create mock time patterns
-    timePatterns.hourly = {
-      "9": Math.floor(Math.random() * 30) + 10,
-      "10": Math.floor(Math.random() * 30) + 20,
-      "11": Math.floor(Math.random() * 30) + 25,
-      "12": Math.floor(Math.random() * 30) + 15,
-      "13": Math.floor(Math.random() * 30) + 20,
-      "14": Math.floor(Math.random() * 30) + 15,
-      "15": Math.floor(Math.random() * 30) + 20,
-      "16": Math.floor(Math.random() * 30) + 10
+  // If no explicit date columns, look for string columns that might contain dates
+  const potentialDateColumns = columns.filter(col => {
+    // Check first few rows for date-like patterns
+    const sampleSize = Math.min(5, data.length);
+    for (let i = 0; i < sampleSize; i++) {
+      const value = String(data[i][col]).trim();
+      
+      // Simple pattern checks for date formats
+      if (
+        // YYYY-MM-DD or MM/DD/YYYY or DD/MM/YYYY
+        /^\d{2,4}[-/]\d{1,2}[-/]\d{1,2}$/.test(value) ||
+        // Month names 
+        /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec).*\d{1,2}.*\d{2,4}$/.test(value) ||
+        // Day of week
+        /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/.test(value)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  });
+  
+  const allDateColumns = [...dateColumns, ...potentialDateColumns].filter((col, index, self) => 
+    self.indexOf(col) === index
+  );
+  
+  if (allDateColumns.length > 0) {
+    // Use the first identified date column
+    const dateColumn = allDateColumns[0];
+    console.log(`Using ${dateColumn} for time pattern analysis`);
+    
+    // Extract day of week if possible
+    const dailyPatterns: Record<string, number> = {
+      "Monday": 0,
+      "Tuesday": 0,
+      "Wednesday": 0,
+      "Thursday": 0,
+      "Friday": 0,
+      "Saturday": 0,
+      "Sunday": 0
     };
     
-    timePatterns.daily = {
-      "Monday": Math.floor(Math.random() * 30) + 70,
-      "Tuesday": Math.floor(Math.random() * 30) + 80,
-      "Wednesday": Math.floor(Math.random() * 30) + 90,
-      "Thursday": Math.floor(Math.random() * 30) + 85,
-      "Friday": Math.floor(Math.random() * 30) + 75
-    };
+    // Extract hour of day if possible
+    const hourlyPatterns: Record<string, number> = {};
+    for (let i = 0; i < 24; i++) {
+      hourlyPatterns[i.toString()] = 0;
+    }
     
-    return timePatterns;
+    // Analyze the data
+    data.forEach(row => {
+      try {
+        const dateValue = String(row[dateColumn]);
+        
+        // Try to parse the date
+        const parsedDate = new Date(dateValue);
+        
+        if (!isNaN(parsedDate.getTime())) {
+          // Valid date - extract day of week
+          const dayOfWeek = [
+            "Sunday", "Monday", "Tuesday", "Wednesday", 
+            "Thursday", "Friday", "Saturday"
+          ][parsedDate.getDay()];
+          
+          dailyPatterns[dayOfWeek] = (dailyPatterns[dayOfWeek] || 0) + 1;
+          
+          // Extract hour
+          const hour = parsedDate.getHours().toString();
+          hourlyPatterns[hour] = (hourlyPatterns[hour] || 0) + 1;
+        }
+        // For day names without full dates
+        else if (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/.test(dateValue)) {
+          const dayMap: Record<string, string> = {
+            "Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday",
+            "Thu": "Thursday", "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday"
+          };
+          
+          for (const [abbr, full] of Object.entries(dayMap)) {
+            if (dateValue.startsWith(abbr)) {
+              dailyPatterns[full] = (dailyPatterns[full] || 0) + 1;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        // Skip errors in date parsing
+      }
+    });
+    
+    // Clean up the results to keep only days with data
+    Object.keys(dailyPatterns).forEach(day => {
+      if (dailyPatterns[day] === 0) delete dailyPatterns[day];
+    });
+    
+    Object.keys(hourlyPatterns).forEach(hour => {
+      if (hourlyPatterns[hour] === 0) delete hourlyPatterns[hour];
+    });
+    
+    // Only add patterns if we found real data
+    if (Object.keys(dailyPatterns).length > 0) {
+      timePatterns.daily = dailyPatterns;
+    }
+    
+    if (Object.keys(hourlyPatterns).length > 0) {
+      timePatterns.hourly = hourlyPatterns;
+    }
+    
+    // If we were able to extract meaningful patterns, return them
+    if (Object.keys(timePatterns).length > 0) {
+      return timePatterns;
+    }
   }
   
-  // Here we could add more sophisticated date parsing
-  // but for now we'll just return mock data since real date parsing
-  // can be complex in JavaScript
+  // Fall back to generated patterns only if we couldn't extract real ones
+  const weekdayDistribution = detectWeekdayPatterns(data);
+  if (weekdayDistribution) {
+    return {
+      daily: weekdayDistribution
+    };
+  }
+  
+  // Last resort: synthetic but realistic patterns (not just random)
   return {
     hourly: {
       "9": Math.floor(data.length * 0.15),
@@ -542,6 +637,52 @@ function generateTimePatterns(data: DataRow[]): Record<string, Record<string, nu
       "Friday": Math.floor(data.length * 0.15)
     }
   };
+}
+
+// Helper function to detect day patterns from categorical columns
+function detectWeekdayPatterns(data: DataRow[]): Record<string, number> | null {
+  // Check for columns that might contain day information
+  const columns = Object.keys(data[0]);
+  const dayColumns = columns.filter(col => {
+    const lowerCol = col.toLowerCase();
+    return lowerCol.includes('day') || 
+           lowerCol.includes('weekday') ||
+           lowerCol === 'dow';
+  });
+  
+  if (dayColumns.length === 0) return null;
+  
+  const dayCol = dayColumns[0];
+  const dayCount: Record<string, number> = {};
+  
+  // Count occurrences of each value
+  data.forEach(row => {
+    let day = String(row[dayCol]).trim();
+    
+    // Try to standardize day format
+    const dayMap: Record<string, string> = {
+      "mon": "Monday", "tue": "Tuesday", "wed": "Wednesday",
+      "thu": "Thursday", "fri": "Friday", "sat": "Saturday", "sun": "Sunday",
+      "m": "Monday", "t": "Tuesday", "w": "Wednesday", 
+      "th": "Thursday", "f": "Friday", "sa": "Saturday", "su": "Sunday",
+      "1": "Monday", "2": "Tuesday", "3": "Wednesday",
+      "4": "Thursday", "5": "Friday", "6": "Saturday", "0": "Sunday"
+    };
+    
+    const lowerDay = day.toLowerCase();
+    
+    for (const [abbr, full] of Object.entries(dayMap)) {
+      if (lowerDay === abbr || lowerDay.startsWith(abbr)) {
+        day = full;
+        break;
+      }
+    }
+    
+    dayCount[day] = (dayCount[day] || 0) + 1;
+  });
+  
+  // Only return if we found meaningful day patterns
+  return Object.keys(dayCount).length >= 2 ? dayCount : null;
 }
 
 // Generate product associations (mock data)
