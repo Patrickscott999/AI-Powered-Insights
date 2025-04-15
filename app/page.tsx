@@ -4,6 +4,7 @@ import { useState } from "react"
 import { FileUpload } from "@/components/file-upload"
 import { DataVisualizer } from "@/components/data-visualizer"
 import { InsightsSummary } from "@/components/insights-summary"
+import { DataChat } from "@/components/data-chat"
 import { Button } from "@/components/ui/button"
 
 export default function Home() {
@@ -121,17 +122,29 @@ export default function Home() {
               <DataVisualizer data={data} statistics={statistics} />
             </div>
             
-            {summary && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {summary && (
+                <div className="bg-white rounded-xl shadow-md p-6 border border-slate-200 card-hover">
+                  <h2 className="text-xl font-semibold text-slate-700 mb-4 flex items-center">
+                    <span className="inline-block w-8 h-8 mr-2 rounded-full gradient-primary flex items-center justify-center text-white">
+                      3
+                    </span>
+                    AI-Generated Insights
+                  </h2>
+                  <InsightsSummary summary={summary} />
+                </div>
+              )}
+              
               <div className="bg-white rounded-xl shadow-md p-6 border border-slate-200 card-hover">
                 <h2 className="text-xl font-semibold text-slate-700 mb-4 flex items-center">
                   <span className="inline-block w-8 h-8 mr-2 rounded-full gradient-primary flex items-center justify-center text-white">
-                    3
+                    4
                   </span>
-                  AI-Generated Insights
+                  Ask About Your Data
                 </h2>
-                <InsightsSummary summary={summary} />
+                <DataChat data={data} statistics={statistics} />
               </div>
-            )}
+            </div>
           </div>
         )}
         
