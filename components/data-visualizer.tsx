@@ -626,24 +626,24 @@ export function DataVisualizer({ data, statistics, selectedVisualization }: Data
             setTimeMetric(selectedVisualization.config.xAxis);
           }
         }
-      } 
-      else if (selectedVisualization.type === 'scatter') {
-        setActiveTab('correlations');
       }
-      else if (selectedVisualization.type === 'bar' || selectedVisualization.type === 'pie') {
-        setActiveTab('standard');
-        
-        // Set the selected column if specified
-        if (selectedVisualization.config.xAxis || selectedVisualization.config.category) {
-          const columnToSelect = selectedVisualization.config.xAxis || selectedVisualization.config.category;
-          if (columnToSelect && (categoricalColumns.includes(columnToSelect) || numericColumns.includes(columnToSelect))) {
-            setSelectedColumn(columnToSelect);
-          }
+    } 
+    else if (selectedVisualization.type === 'scatter') {
+      setActiveTab('correlations');
+    }
+    else if (selectedVisualization.type === 'bar' || selectedVisualization.type === 'pie') {
+      setActiveTab('standard');
+      
+      // Set the selected column if specified
+      if (selectedVisualization.config.xAxis || selectedVisualization.config.category) {
+        const columnToSelect = selectedVisualization.config.xAxis || selectedVisualization.config.category;
+        if (columnToSelect && (categoricalColumns.includes(columnToSelect) || numericColumns.includes(columnToSelect))) {
+          setSelectedColumn(columnToSelect);
         }
-        
-        // Set the appropriate chart type
-        setChartType(selectedVisualization.type as ChartType);
       }
+      
+      // Set the appropriate chart type
+      setChartType(selectedVisualization.type as ChartType);
     }
   }, [selectedVisualization, categoricalColumns, numericColumns, statistics]);
 

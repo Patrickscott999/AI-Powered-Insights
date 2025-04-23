@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { ScrollArea } from './ui/scroll-area'
@@ -13,7 +13,13 @@ import {
   TrendingUp, 
   Sliders as LucideSliders,
   Info, 
-  AlertCircle 
+  AlertCircle,
+  DollarSign,
+  Package,
+  Users,
+  BarChart2,
+  Lightbulb,
+  Send
 } from 'lucide-react'
 import {
   Tooltip,
@@ -22,10 +28,12 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
-interface DataChatProps {
+export interface DataChatProps {
   data: any[] | null
   statistics: any | null
-  onVisualizationRequest?: (type: string, config: any) => void
+  onVisualizeData?: (type: string, config: any) => void
+  onShowPrediction: () => void
+  onShowScenario: (scenarioName: string) => void
 }
 
 // Update Message type to include predictive and scenario suggestions
@@ -35,13 +43,17 @@ type Message = {
   suggestions?: VisualizationSuggestion[]
   predictiveSuggestion?: PredictiveSuggestion
   scenarioSuggestion?: ScenarioSuggestion
+  timestamp: Date
 }
 
-type VisualizationSuggestion = {
-  type: 'bar' | 'line' | 'pie' | 'scatter'
-  title: string
-  description: string
-  config: any
+interface VisualizationSuggestion {
+  type: 'bar' | 'line' | 'pie' | 'scatter';
+  title: string;
+  description: string;
+  x: string;
+  y: string;
+  color: string;
+  icon: React.ReactNode;
 }
 
 // Add new types for predictive analytics and what-if scenarios
@@ -80,11 +92,27 @@ type QualityTooltip = {
   type: 'warning' | 'info' | 'error';
 }
 
-export function DataChat({ data, statistics, onVisualizationRequest }: DataChatProps) {
+export function DataChat({ data, statistics, onVisualizeData, onShowPrediction, onShowScenario }: DataChatProps) {
   const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'assistant',
-      content: 'Hello! I can help answer questions about your data. What would you like to know?'
+    { 
+      role: 'assistant', 
+      content: `# Welcome to your Business Intelligence Analyst
+
+I'm your AI Business Analyst, ready to help you derive actionable insights from your data.
+
+**How I can help you:**
+- 📈 Identify revenue growth opportunities
+- 🛒 Optimize your product mix and pricing strategies
+- 👥 Segment customers for targeted marketing
+- ⏱️ Improve operational efficiency
+- 🔍 Answer any questions about your data
+
+Try asking questions like:
+- "How can I improve my business performance?"
+- "What strategies would increase our revenue?"
+- "Show me the main trends in this data"
+- "Which products are performing best?"`,
+      timestamp: new Date()
     }
   ])
   const [input, setInput] = useState('')
@@ -146,110 +174,134 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
     }));
   };
 
-  // Generate visualization suggestions based on the response
-  const generateVisualizationSuggestions = (questionText: string, responseText: string): VisualizationSuggestion[] => {
+  // Enhanced visualization suggestions
+  const generateVisualizationSuggestions = useMemo(() => {
     if (!data || data.length === 0) return [];
-    
-    const lowerQuestion = questionText.toLowerCase();
-    const lowerResponse = responseText.toLowerCase();
-    const columns = Object.keys(data[0]);
+
+    const columns = Object.keys(data[0] || {});
     const numericColumns = columns.filter(col => 
-      typeof data[0][col] === 'number'
+      !isNaN(Number(data[0][col])) && 
+      typeof data[0][col] !== 'boolean'
     );
     const categoricalColumns = columns.filter(col => 
-      typeof data[0][col] === 'string' || typeof data[0][col] === 'boolean'
+      isNaN(Number(data[0][col])) || 
+      typeof data[0][col] === 'boolean'
     );
     
     const suggestions: VisualizationSuggestion[] = [];
     
-    // Detect time series questions
-    if (lowerQuestion.includes('trend') || lowerQuestion.includes('over time') || 
-        lowerResponse.includes('trend') || lowerResponse.includes('over time')) {
-      
-      if (numericColumns.length > 0) {
-        suggestions.push({
-          type: 'line',
-          title: 'Time Series Chart',
-          description: 'View trends over time',
-          config: {
-            xAxis: statistics?.time_column || categoricalColumns[0] || 'index',
-            yAxis: numericColumns[0],
-            aggregation: 'sum'
-          }
-        });
-      }
+    // Revenue Analysis
+    const revenueColumns = numericColumns.filter(col => 
+      col.toLowerCase().includes('revenue') || 
+      col.toLowerCase().includes('sales') || 
+      col.toLowerCase().includes('price') ||
+      col.toLowerCase().includes('profit')
+    );
+    
+    if (revenueColumns.length > 0) {
+      suggestions.push({
+        title: "Revenue Analysis",
+        description: "Analyze your revenue patterns to identify growth opportunities",
+        icon: <DollarSign className="h-4 w-4" />,
+        type: "bar",
+        x: categoricalColumns[0] || columns[0],
+        y: revenueColumns[0],
+        color: "#10b981" // Green color for revenue
+      });
     }
     
-    // Detect comparison questions
-    if (lowerQuestion.includes('compare') || lowerQuestion.includes('difference') || 
-        lowerResponse.includes('compare') || lowerResponse.includes('highest')) {
-      
-      if (numericColumns.length > 0 && categoricalColumns.length > 0) {
-        suggestions.push({
-          type: 'bar',
-          title: 'Comparison Chart',
-          description: 'Compare values across categories',
-          config: {
-            xAxis: categoricalColumns[0],
-            yAxis: numericColumns[0],
-            aggregation: 'sum'
-          }
-        });
-      }
+    // Product Performance
+    const productColumns = categoricalColumns.filter(col => 
+      col.toLowerCase().includes('product') || 
+      col.toLowerCase().includes('item') || 
+      col.toLowerCase().includes('category')
+    );
+    
+    if (productColumns.length > 0 && numericColumns.length > 0) {
+      suggestions.push({
+        title: "Product Performance",
+        description: "Compare performance across your product portfolio",
+        icon: <Package className="h-4 w-4" />,
+        type: "bar",
+        x: productColumns[0],
+        y: numericColumns[0],
+        color: "#3b82f6" // Blue color for products
+      });
     }
     
-    // Detect distribution questions
-    if (lowerQuestion.includes('distribution') || lowerQuestion.includes('spread') || 
-        lowerResponse.includes('distribution') || lowerResponse.includes('spread')) {
-      
-      if (categoricalColumns.length > 0) {
-        suggestions.push({
-          type: 'pie',
-          title: 'Distribution Chart',
-          description: 'View proportional breakdown',
-          config: {
-            category: categoricalColumns[0],
-            value: numericColumns[0] || 'count'
-          }
-        });
-      }
+    // Customer Segmentation
+    const customerColumns = categoricalColumns.filter(col => 
+      col.toLowerCase().includes('customer') || 
+      col.toLowerCase().includes('client') || 
+      col.toLowerCase().includes('segment')
+    );
+    
+    if (customerColumns.length > 0 && numericColumns.length > 0) {
+      suggestions.push({
+        title: "Customer Segmentation",
+        description: "Analyze performance across customer segments",
+        icon: <Users className="h-4 w-4" />,
+        type: "pie",
+        x: customerColumns[0],
+        y: numericColumns[0],
+        color: "#8b5cf6" // Purple color for customers
+      });
     }
     
-    // Detect correlation questions
-    if (lowerQuestion.includes('correlation') || lowerQuestion.includes('relationship') || 
-        lowerResponse.includes('correlation') || lowerResponse.includes('relationship')) {
-      
-      if (numericColumns.length >= 2) {
-        suggestions.push({
-          type: 'scatter',
-          title: 'Correlation Chart',
-          description: 'Explore relationships between variables',
-          config: {
-            xAxis: numericColumns[0],
-            yAxis: numericColumns[1]
-          }
-        });
-      }
+    // Time Trend Analysis
+    const timeColumns = categoricalColumns.filter(col => 
+      col.toLowerCase().includes('date') || 
+      col.toLowerCase().includes('month') || 
+      col.toLowerCase().includes('year') ||
+      col.toLowerCase().includes('period')
+    );
+    
+    if (timeColumns.length > 0 && numericColumns.length > 0) {
+      suggestions.push({
+        title: "Trend Analysis",
+        description: "Identify patterns and trends over time",
+        icon: <TrendingUp className="h-4 w-4" />,
+        type: "line",
+        x: timeColumns[0],
+        y: numericColumns[0],
+        color: "#f59e0b" // Amber color for trends
+      });
     }
     
-    return suggestions.slice(0, 3); // Return up to 3 suggestions
-  };
+    // Add default visualizations if we don't have enough specific ones
+    if (suggestions.length < 2 && numericColumns.length > 0 && categoricalColumns.length > 0) {
+      suggestions.push({
+        title: "Data Overview",
+        description: "General overview of your business data",
+        icon: <BarChart2 className="h-4 w-4" />,
+        type: "bar",
+        x: categoricalColumns[0],
+        y: numericColumns[0],
+        color: "#6366f1" // Indigo color for general
+      });
+    }
+    
+    return suggestions;
+  }, [data]);
 
   // Handle suggestion click
   const handleSuggestionClick = (suggestion: VisualizationSuggestion) => {
-    if (onVisualizationRequest) {
-      onVisualizationRequest(suggestion.type, suggestion.config);
+    if (onVisualizeData) {
+      // Configure visualization based on suggestion type
+      let config: any = {
+        xAxis: suggestion.x,
+        yAxis: suggestion.y,
+        aggregation: 'sum',
+        color: suggestion.color
+      };
       
-      // Update context with preferred visualization
-      setConversationContext(prev => ({
-        ...prev,
-        preferredVisualization: suggestion.type
-      }));
+      onVisualizeData(suggestion.type, config);
       
-      // Add a message about the visualization
+      // Add a confirmation message
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `I've created a ${suggestion.title.toLowerCase()} based on your data.`
+        content: `I've created a ${suggestion.title.toLowerCase()} based on your data.`,
+        timestamp: new Date()
       }]);
     }
   };
@@ -258,7 +310,7 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
     if (!input.trim() || !data) return
 
     // Add user message
-    const userMessage = { role: 'user' as const, content: input }
+    const userMessage = { role: 'user' as const, content: input, timestamp: new Date() }
     setMessages(prev => [...prev, userMessage])
     
     // Update conversation context with new question
@@ -295,7 +347,7 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
       const result = await response.json()
       
       // Generate visualization suggestions
-      const suggestions = generateVisualizationSuggestions(input, result.answer);
+      const suggestions = generateVisualizationSuggestionsFromChat(input, result.answer);
       
       // Add assistant response with all relevant suggestions
       setMessages(prev => [...prev, { 
@@ -303,14 +355,16 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
         content: result.answer,
         suggestions: suggestions.length > 0 ? suggestions : undefined,
         predictiveSuggestion,
-        scenarioSuggestion
+        scenarioSuggestion,
+        timestamp: new Date()
       }])
     } catch (error) {
       console.error('Error processing chat:', error)
       // Add error message
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: 'Sorry, I encountered an error processing your question. Please try again.' 
+        content: 'Sorry, I encountered an error processing your question. Please try again.',
+        timestamp: new Date()
       }])
     } finally {
       setIsLoading(false)
@@ -550,33 +604,36 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
 
   // Add function to handle predictive suggestion click
   const handlePredictiveSuggestionClick = () => {
-    if (onVisualizationRequest) {
-      // Switch to the forecast tab - this should navigate to the forecast tab in the DataVisualizer
-      onVisualizationRequest('forecast', { showForecast: true });
+    if (onShowPrediction) {
+      onShowPrediction();
       
       // Add a message about switching to forecast view
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `I've opened the forecast view where you can explore predicted future trends and patterns in detail.`
+        content: `I've opened the forecast view where you can explore predicted future trends and patterns in detail.`,
+        timestamp: new Date()
       }]);
     }
   };
 
   // Add function to handle scenario suggestion click
   const handleScenarioSuggestionClick = (scenarioName: string) => {
-    if (onVisualizationRequest) {
-      // Switch to the scenario tab with the selected scenario
-      onVisualizationRequest('forecast', { 
-        showScenario: true,
-        scenarioName
-      });
+    if (onShowScenario) {
+      onShowScenario(scenarioName);
       
       // Add a message about switching to scenario view
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `I've opened the scenario modeling tool with the "${scenarioName}" scenario. You can adjust parameters to see how they would affect your business outcomes.`
+        content: `I've opened the scenario modeling tool with the "${scenarioName}" scenario. You can adjust parameters to see how they would affect your business outcomes.`,
+        timestamp: new Date()
       }]);
     }
+  };
+
+  // Generate visualization suggestions based on message context
+  const generateVisualizationSuggestionsFromChat = (questionText: string, responseText: string) => {
+    // Return the preset suggestions we created based on data structure
+    return generateVisualizationSuggestions;
   };
 
   return (
@@ -611,14 +668,14 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
               
               {/* Visualization suggestions */}
               {message.role === 'assistant' && message.suggestions && message.suggestions.length > 0 && (
-                <div className="pl-2 flex flex-wrap gap-2">
-                  {message.suggestions.map((suggestion, suggIndex) => (
+                <div className="pl-2 mt-1 mb-2">
+                  {message.suggestions.map((suggestion, i) => (
                     <button
-                      key={suggIndex}
+                      key={i}
                       onClick={() => handleSuggestionClick(suggestion)}
                       className="inline-flex items-center px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-full text-slate-700 hover:bg-slate-50 transition-colors"
                     >
-                      {getVisualizationIcon(suggestion.type)}
+                      {suggestion.icon}
                       <span className="ml-1.5 mr-0.5">{suggestion.title}</span>
                       <ChevronRight className="h-3 w-3 opacity-50" />
                     </button>
@@ -633,13 +690,10 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
                     onClick={handlePredictiveSuggestionClick}
                     className="inline-flex items-center px-3 py-1.5 text-xs bg-indigo-50 border border-indigo-200 rounded-full text-indigo-700 hover:bg-indigo-100 transition-colors"
                   >
-                    <TrendingUp className="h-4 w-4 mr-1.5" />
-                    <span className="mr-0.5">View Sales Forecast</span>
+                    <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
+                    <span className="mr-0.5">{message.predictiveSuggestion.title}</span>
                     <ChevronRight className="h-3 w-3 opacity-50" />
                   </button>
-                  <p className="text-xs text-slate-500 mt-1 ml-1">
-                    {message.predictiveSuggestion.description}
-                  </p>
                 </div>
               )}
               
@@ -651,25 +705,23 @@ export function DataChat({ data, statistics, onVisualizationRequest }: DataChatP
                       onClick={() => handleScenarioSuggestionClick('Custom Scenario')}
                       className="inline-flex items-center px-3 py-1.5 text-xs bg-amber-50 border border-amber-200 rounded-full text-amber-700 hover:bg-amber-100 transition-colors"
                     >
-                      <LucideSliders className="h-4 w-4 mr-1.5" />
-                      <span className="mr-0.5">Try What-If Scenarios</span>
+                      <LucideSliders className="h-3.5 w-3.5 mr-1.5" />
+                      <span className="mr-0.5">What-If Analysis</span>
                       <ChevronRight className="h-3 w-3 opacity-50" />
                     </button>
-                    <p className="text-xs text-slate-500 mt-1 ml-1 mb-2">
-                      {message.scenarioSuggestion.description}
-                    </p>
                   </div>
                   
-                  {/* Show specific scenario options if there are more than just the default */}
-                  {message.scenarioSuggestion.scenarios.length > 1 && (
-                    <div className="flex flex-wrap gap-2 ml-1 mt-1">
-                      {message.scenarioSuggestion.scenarios.slice(1).map((scenario, i) => (
+                  {message.scenarioSuggestion.scenarios.length > 0 && (
+                    <div className="mt-1 pl-1 flex flex-wrap gap-1">
+                      <span className="text-xs text-slate-500 mt-1 mr-1">Try Scenarios:</span>
+                      {message.scenarioSuggestion.scenarios.map((scenario, i) => (
                         <button
                           key={i}
                           onClick={() => handleScenarioSuggestionClick(scenario.name)}
                           className="inline-flex items-center px-2 py-1 text-xs bg-white border border-slate-200 rounded-full text-slate-700 hover:bg-slate-50 transition-colors"
                         >
-                          <span>{scenario.name}</span>
+                          <Lightbulb className="h-3 w-3 mr-1 text-amber-500" />
+                          {scenario.name}
                         </button>
                       ))}
                     </div>

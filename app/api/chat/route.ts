@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import OpenAI from 'openai';
 
 interface ChatRequest {
   question: string;
@@ -11,6 +12,11 @@ interface ChatRequest {
     preferredVisualization?: string;
   };
 }
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,8 +34,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No data provided" }, { status: 400 });
     }
     
-    // Generate an answer based on the question, data and context
-    const answer = generateAnswer(question, data, statistics, context);
+    // Check if OpenAI API key is available
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("OpenAI API key not configured");
+      // Fall back to local answer generation if no API key
+      const fallbackAnswer = generateFallbackAnswer(question, data, statistics, context);
+      return NextResponse.json({ answer: fallbackAnswer });
+    }
+    
+    // Generate an answer using OpenAI
+    const answer = await generateOpenAIAnswer(question, data, statistics, context);
     
     return NextResponse.json({ answer });
   } catch (error) {
@@ -41,7 +55,113 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generateAnswer(
+// Generate answer using OpenAI API
+async function generateOpenAIAnswer(
+  question: string,
+  data: any[],
+  statistics: any,
+  context?: ChatRequest['context']
+): Promise<string> {
+  try {
+    // Prepare a sample of the data to avoid token limits
+    const dataSample = data.slice(0, 10);
+    
+    // Format column information
+    const columns = Object.keys(data[0] || {});
+    const columnsInfo = columns.map(col => {
+      const isNumeric = statistics?.numeric_columns?.[col] !== undefined;
+      if (isNumeric) {
+        return `${col} (numeric): min=${statistics.numeric_columns[col].min}, max=${statistics.numeric_columns[col].max}, mean=${statistics.numeric_columns[col].mean.toFixed(2)}`;
+      } else {
+        const cats = statistics?.categorical_columns?.[col];
+        if (cats) {
+          return `${col} (categorical): ${cats.unique_values} unique values, most common="${cats.most_common}" (${cats.frequency} occurrences)`;
+        }
+        return `${col} (unknown type)`;
+      }
+    }).join('\n');
+
+    // Create a system prompt with data information
+    const systemPrompt = `You are an expert business analyst and data scientist helping analyze business data. 
+    
+DATA SUMMARY:
+- ${data.length} total records
+- Columns: ${columns.join(', ')}
+
+COLUMN DETAILS:
+${columnsInfo}
+
+Your task is to provide insightful business analysis and actionable recommendations based on the data. 
+Focus on business insights rather than technical details. Use specific values from the data to support your points.
+Be concise but thorough. Format your response in a clear, professional manner using markdown.`;
+
+    // Include context from previous conversation if available
+    let contextInfo = '';
+    if (context) {
+      if (context.lastQuestion) {
+        contextInfo += `Previous question: ${context.lastQuestion}\n`;
+      }
+      if (context.recentTopics && context.recentTopics.length > 0) {
+        contextInfo += `Recent topics discussed: ${context.recentTopics.join(', ')}\n`;
+      }
+      if (context.mentionedColumns && context.mentionedColumns.length > 0) {
+        contextInfo += `Recently discussed columns: ${context.mentionedColumns.join(', ')}\n`;
+      }
+    }
+
+    // Include key statistics if available
+    let statsInfo = '';
+    if (statistics) {
+      if (statistics.correlations) {
+        statsInfo += "\nNOTABLE CORRELATIONS:\n";
+        // Extract a few notable correlations
+        let correlationCount = 0;
+        for (const col1 in statistics.correlations) {
+          for (const col2 in statistics.correlations[col1]) {
+            if (col1 < col2 && Math.abs(statistics.correlations[col1][col2]) > 0.5) {
+              statsInfo += `- ${col1} and ${col2}: ${statistics.correlations[col1][col2].toFixed(2)}\n`;
+              correlationCount++;
+              if (correlationCount >= 3) break;
+            }
+          }
+          if (correlationCount >= 3) break;
+        }
+      }
+      
+      if (statistics.time_patterns) {
+        statsInfo += "\nTIME PATTERNS:\n";
+        for (const timeUnit in statistics.time_patterns) {
+          const patterns = statistics.time_patterns[timeUnit];
+          const topKey = Object.keys(patterns).reduce((a, b) => patterns[a] > patterns[b] ? a : b, Object.keys(patterns)[0]);
+          statsInfo += `- Peak ${timeUnit}: ${topKey} (${patterns[topKey]} occurrences)\n`;
+        }
+      }
+    }
+
+    // Full user prompt with question and data context
+    const userPrompt = `${contextInfo ? "CONVERSATION CONTEXT:\n" + contextInfo + "\n" : ""}${statsInfo}\n\nUser question: ${question}\n\nProvide a business-focused analysis with actionable insights and recommendations based on the data.`;
+
+    // Call OpenAI API
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",  // Use GPT-4 for best analysis quality
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 800,
+    });
+
+    return completion.choices[0].message.content || "I couldn't generate an analysis based on the data provided.";
+  } catch (error) {
+    console.error("OpenAI API error:", error);
+    // Fall back to local generation if API fails
+    return generateFallbackAnswer(question, data, statistics, context);
+  }
+}
+
+// Fallback function if OpenAI API is unavailable or fails
+function generateFallbackAnswer(
   question: string, 
   data: any[], 
   statistics: any, 
@@ -51,6 +171,14 @@ function generateAnswer(
   
   // Get column names from the first data row
   const columns = Object.keys(data[0] || {});
+  
+  // Business analyst mode - prioritize business insights
+  if (lowerQuestion.includes("improve") || lowerQuestion.includes("increase revenue") || 
+      lowerQuestion.includes("boost sales") || lowerQuestion.includes("business strategy") ||
+      lowerQuestion.includes("optimize") || lowerQuestion.includes("performance")) {
+    
+    return generateBusinessRecommendations(data, statistics, columns, lowerQuestion);
+  }
   
   // Use context to enhance the response if available
   const isFollowUpQuestion = context?.lastQuestion && 
@@ -315,6 +443,138 @@ function generateAnswer(
     }
   }
   
+  // Handle predictive forecast questions
+  if (lowerQuestion.includes("predict") || lowerQuestion.includes("forecast") || 
+      lowerQuestion.includes("future") || lowerQuestion.includes("projection") ||
+      lowerQuestion.includes("next month") || lowerQuestion.includes("next week")) {
+    
+    if (statistics?.forecast) {
+      const forecast = statistics.forecast;
+      
+      // Get some forecast metrics
+      const predictionLength = forecast.predicted.length;
+      const totalPredicted = forecast.predicted.reduce((sum: number, val: number) => sum + val, 0);
+      
+      // Calculate growth rate from last known data point to average prediction
+      const avgPrediction = totalPredicted / predictionLength;
+      
+      let response = `Based on the historical patterns in your data, I've predicted your future performance over the next ${predictionLength} periods. `;
+      
+      // Add forecast confidence
+      if (forecast.accuracy) {
+        response += `This forecast has ${forecast.accuracy.level} confidence (${forecast.accuracy.score}% accuracy score). `;
+      }
+      
+      // Add trend insight
+      const lastPredictions = forecast.predicted.slice(-3);
+      const firstPredictions = forecast.predicted.slice(0, 3);
+      const lastAvg = lastPredictions.reduce((sum: number, val: number) => sum + val, 0) / lastPredictions.length;
+      const firstAvg = firstPredictions.reduce((sum: number, val: number) => sum + val, 0) / firstPredictions.length;
+      const trendPct = ((lastAvg - firstAvg) / firstAvg * 100).toFixed(1);
+      
+      if (parseFloat(trendPct) > 5) {
+        response += `The forecast shows an increasing trend of approximately ${trendPct}% from beginning to end. `;
+      } else if (parseFloat(trendPct) < -5) {
+        response += `The forecast shows a decreasing trend of approximately ${Math.abs(parseFloat(trendPct))}% from beginning to end. `;
+      } else {
+        response += `The forecast shows a relatively stable trend over the prediction period. `;
+      }
+      
+      // Add peak insight if we have dates
+      if (forecast.dates && forecast.dates.length > 0) {
+        const highestValIndex = forecast.predicted.indexOf(Math.max(...forecast.predicted));
+        const highestDate = forecast.dates[highestValIndex];
+        
+        response += `The highest projected period is ${highestDate} with a value of ${forecast.predicted[highestValIndex]}. `;
+      }
+      
+      // Add general business advice
+      response += "\n\nBased on this forecast, you should consider:";
+      
+      if (parseFloat(trendPct) > 10) {
+        response += "\n- Preparing for growth by ensuring sufficient inventory and staffing";
+        response += "\n- Reviewing your capacity to handle increased demand";
+        response += "\n- Capitalizing on the positive trend in your marketing messaging";
+      } else if (parseFloat(trendPct) < -10) {
+        response += "\n- Implementing promotional strategies to counteract the projected decline";
+        response += "\n- Reviewing inventory levels to avoid overstock during lower demand periods";
+        response += "\n- Analyzing potential causes of the downward trend for corrective action";
+      } else {
+        response += "\n- Maintaining current operational levels while looking for growth opportunities";
+        response += "\n- Fine-tuning efficiency to improve margins during this stable period";
+        response += "\n- Conducting market research to identify potential new growth vectors";
+      }
+      
+      // Suggest the visualization 
+      response += "\n\nYou can view the detailed forecast visualization to see confidence intervals and explore specific time periods.";
+      
+      return response;
+    } else {
+      return "I don't have forecast data available for your dataset. If you provide more historical time series data, I can generate predictive insights for your business.";
+    }
+  }
+  
+  // Handle what-if scenario questions
+  if (lowerQuestion.includes("what if") || lowerQuestion.includes("scenario") || 
+      lowerQuestion.includes("simulation") || lowerQuestion.includes("model if") ||
+      lowerQuestion.includes("happens if") || lowerQuestion.includes("price change") ||
+      lowerQuestion.includes("marketing budget")) {
+    
+    if (statistics?.forecast) {
+      let response = "I can help you explore different business scenarios using your historical data and forecast. ";
+      
+      // Check for specific scenarios in the question
+      if (lowerQuestion.includes("price")) {
+        const direction = lowerQuestion.includes("increase") || lowerQuestion.includes("higher") ? "increase" : "decrease";
+        const magnitude = lowerQuestion.includes("10%") ? "10%" : lowerQuestion.includes("20%") ? "20%" : "5%";
+        
+        response += `For a ${magnitude} ${direction} in pricing, you could expect: `;
+        
+        if (direction === "increase") {
+          response += `While revenue per unit would be higher, sales volume might decrease due to price elasticity. `;
+          response += `The overall impact would depend on your customers' price sensitivity. `;
+          response += `With typical price elasticity, a ${magnitude} price increase often results in a 3-8% revenue increase if your products are differentiated.`;
+        } else {
+          response += `While you may see higher sales volume, your per-unit revenue would decrease. `;
+          response += `The overall impact would depend on how responsive your customers are to price changes. `;
+          response += `With typical price elasticity, a ${magnitude} price decrease might increase units sold by 7-15% but may result in lower overall margins.`;
+        }
+      } 
+      else if (lowerQuestion.includes("marketing") || lowerQuestion.includes("advertising")) {
+        const direction = lowerQuestion.includes("increase") || lowerQuestion.includes("higher") ? "increase" : "decrease";
+        const magnitude = lowerQuestion.includes("30%") ? "30%" : lowerQuestion.includes("50%") ? "50%" : "20%";
+        
+        response += `For a ${magnitude} ${direction} in marketing budget, potential impacts include: `;
+        
+        if (direction === "increase") {
+          response += `A ${magnitude} increase in marketing typically drives a 5-15% increase in customer acquisition, `;
+          response += `though results vary by industry and campaign effectiveness. `;
+          response += `The key is ensuring your marketing efficiency doesn't decrease with scale.`;
+        } else {
+          response += `A ${magnitude} decrease in marketing might reduce new customer acquisition by 10-25%, `;
+          response += `potentially impacting not just immediate sales but also long-term growth. `;
+          response += `Consider focusing remaining budget on your highest-performing channels.`;
+        }
+      }
+      else {
+        response += "Common scenarios to explore include:";
+        response += "\n- Price changes: See how different pricing strategies affect overall revenue";
+        response += "\n- Marketing budget adjustments: Model the impact of increasing or decreasing marketing spend";
+        response += "\n- Discount promotions: Understand how promotional discounts affect volume and overall profit";
+      }
+      
+      // Add general advice about what-if modeling
+      response += "\n\nFor more precise scenario modeling, I recommend using the What-If Scenario tool, which lets you:";
+      response += "\n- Adjust multiple parameters simultaneously";
+      response += "\n- View detailed projections with confidence intervals";
+      response += "\n- Compare outcomes side-by-side with the baseline forecast";
+      
+      return response;
+    } else {
+      return "I need more historical data to run what-if scenarios for your business. Please ensure your dataset includes time-series information with sufficient history to enable forecasting.";
+    }
+  }
+  
   // Handle specific questions about missing data
   if (lowerQuestion.includes("missing") || lowerQuestion.includes("empty") || 
       lowerQuestion.includes("null") || lowerQuestion.includes("na values")) {
@@ -453,10 +713,10 @@ function generateAnswer(
       ? `For more insights on ${context.mentionedColumns[0]}, ask about trends, distributions, or correlations.` 
       : '';
       
-    return `Based on the analyzed data with ${columns.length} fields and ${data.length} records, I can see some patterns. ${topicSuggestion} ${columnSuggestion}`;
+    return `Based on the analyzed data with ${columns.length} fields and ${data.length} records, I can provide more insights. ${topicSuggestion} ${columnSuggestion}`;
   }
   
-  return `Based on the analyzed data with ${columns.length} fields and ${data.length} records, I can see some patterns. To get more specific insights, try asking about a particular column, correlations, time patterns, or product associations.`;
+  return `Based on the analyzed data with ${columns.length} fields and ${data.length} records, I can help uncover business insights tailored to your data. Try asking about specific metrics, trends, customer segments, or revenue opportunities.`;
 }
 
 // Helper function to detect trends in the data
@@ -616,4 +876,185 @@ function getCategoricalInsight(column: string, stats: any): string {
   }
   
   return "This distribution shows where your business activity concentrates.";
+}
+
+// New function to generate detailed business recommendations
+function generateBusinessRecommendations(data: any[], statistics: any, columns: string[], question: string): string {
+  // Initialize response sections
+  let revenueStrategies = "";
+  let operationalImprovements = "";
+  let customerStrategies = "";
+  let productStrategies = "";
+  
+  // Extract relevant columns for analysis
+  const numericColumns = Object.keys(statistics?.numeric_columns || {});
+  const categoricalColumns = Object.keys(statistics?.categorical_columns || {});
+  
+  // Find revenue-related columns
+  const revenueColumns = numericColumns.filter(col => 
+    col.toLowerCase().includes('revenue') || 
+    col.toLowerCase().includes('sales') || 
+    col.toLowerCase().includes('price') ||
+    col.toLowerCase().includes('income') ||
+    col.toLowerCase().includes('profit')
+  );
+  
+  // Find product-related columns
+  const productColumns = categoricalColumns.filter(col => 
+    col.toLowerCase().includes('product') || 
+    col.toLowerCase().includes('item') || 
+    col.toLowerCase().includes('category') ||
+    col.toLowerCase().includes('sku')
+  );
+  
+  // Find customer-related columns
+  const customerColumns = categoricalColumns.filter(col => 
+    col.toLowerCase().includes('customer') || 
+    col.toLowerCase().includes('client') || 
+    col.toLowerCase().includes('segment') ||
+    col.toLowerCase().includes('demographic')
+  );
+  
+  // Generate revenue strategies
+  if (revenueColumns.length > 0) {
+    const revenueCol = revenueColumns[0];
+    const stats = statistics.numeric_columns[revenueCol];
+    
+    revenueStrategies = "## Revenue Growth Strategies\n\n";
+    revenueStrategies += "Based on your sales data, I recommend:\n\n";
+    
+    // Calculate high and low performance
+    const threshold = stats.mean + (0.5 * stats.std);
+    const highPerformanceCount = data.filter(row => Number(row[revenueCol]) > threshold).length;
+    const highPerformancePercent = ((highPerformanceCount / data.length) * 100).toFixed(1);
+    
+    revenueStrategies += `1. **Replicate Success Patterns**: ${highPerformancePercent}% of your transactions perform above average. Analyze these high-value transactions to identify common characteristics.\n\n`;
+    revenueStrategies += `2. **Pricing Optimization**: Your average ${revenueCol} is ${stats.mean.toFixed(2)} with significant variability (${((stats.std/stats.mean)*100).toFixed(1)}% coefficient of variation). Consider testing price elasticity with targeted increases on high-demand items.\n\n`;
+    revenueStrategies += `3. **Minimum Value Strategies**: Implement minimum order values or shipping thresholds approximately 15% above your current average transaction value to encourage larger purchases.\n\n`;
+  }
+  
+  // Generate product strategies
+  if (productColumns.length > 0) {
+    const productCol = productColumns[0];
+    const cats = statistics?.categorical_columns?.[productCol];
+    
+    if (cats) {
+      productStrategies = "## Product Mix Optimization\n\n";
+      
+      productStrategies += `1. **Focus on Top Performers**: Your best-selling item "${cats.most_common}" represents ${((cats.frequency / data.length) * 100).toFixed(1)}% of sales. Create premium versions or bundle opportunities around this product.\n\n`;
+      
+      if (cats.unique_values > 10) {
+        productStrategies += `2. **Streamline Selection**: You offer ${cats.unique_values} different products. Consider evaluating bottom 20% performers for potential elimination or repositioning.\n\n`;
+      } else {
+        productStrategies += `2. **Expand Selection**: Your current offering of ${cats.unique_values} products is relatively focused. Test market expansion with complementary products.\n\n`;
+      }
+      
+      productStrategies += `3. **Product Affinity**: Implement cross-selling strategies based on purchase patterns. Identify products commonly purchased together and optimize placement/promotion accordingly.\n\n`;
+    }
+  }
+  
+  // Generate customer strategies
+  if (customerColumns.length > 0) {
+    const customerCol = customerColumns[0];
+    const cats = statistics?.categorical_columns?.[customerCol];
+    
+    if (cats) {
+      customerStrategies = "## Customer Strategies\n\n";
+      
+      customerStrategies += `1. **Segment Targeting**: Your "${cats.most_common}" customer segment dominates at ${((cats.frequency / data.length) * 100).toFixed(1)}% of transactions. Develop personalized marketing and retention programs for this high-value segment.\n\n`;
+      
+      if (cats.unique_values < 5) {
+        customerStrategies += `2. **Segment Expansion**: Your limited customer segmentation (${cats.unique_values} segments) suggests opportunity for more granular targeting. Consider further segmentation based on behavior patterns.\n\n`;
+      } else {
+        customerStrategies += `2. **Segment Consolidation**: Your diverse customer base (${cats.unique_values} segments) may benefit from more focused marketing efforts. Prioritize top 3-5 segments for dedicated strategies.\n\n`;
+      }
+      
+      customerStrategies += `3. **Loyalty Program**: Implement tiered rewards to increase retention and lifetime value, particularly for your dominant segments.\n\n`;
+    }
+  }
+  
+  // Generate operational improvements
+  if (statistics?.time_patterns) {
+    const patterns = statistics.time_patterns;
+    
+    operationalImprovements = "## Operational Optimizations\n\n";
+    
+    if (patterns.daily) {
+      const dailyValues = patterns.daily;
+      const maxDay = Object.keys(dailyValues).reduce((a, b) => dailyValues[a] > dailyValues[b] ? a : b);
+      const minDay = Object.keys(dailyValues).reduce((a, b) => dailyValues[a] < dailyValues[b] ? a : b);
+      const peakDifference = ((dailyValues[maxDay] - dailyValues[minDay]) / dailyValues[minDay] * 100).toFixed(0);
+      
+      operationalImprovements += `1. **Demand Balancing**: Your business experiences ${peakDifference}% higher activity on ${maxDay} compared to ${minDay}. Implement targeted promotions to balance demand and optimize resource allocation.\n\n`;
+    }
+    
+    if (patterns.monthly) {
+      const monthlyValues = patterns.monthly;
+      const maxMonth = Object.keys(monthlyValues).reduce((a, b) => monthlyValues[a] > monthlyValues[b] ? a : b);
+      const minMonth = Object.keys(monthlyValues).reduce((a, b) => monthlyValues[a] < monthlyValues[b] ? a : b);
+      
+      operationalImprovements += `2. **Seasonal Planning**: ${maxMonth} shows your highest business activity while ${minMonth} shows the lowest. Adjust inventory, staffing, and marketing budgets to align with these seasonal patterns.\n\n`;
+    }
+    
+    operationalImprovements += `3. **Process Efficiency**: Analyze operational throughput during peak periods to identify bottlenecks and optimization opportunities. Consider implementing variable staffing models aligned to demand patterns.\n\n`;
+  }
+  
+  // If we don't have enough specific data, provide general recommendations
+  if (!revenueStrategies && !productStrategies && !customerStrategies && !operationalImprovements) {
+    return `# Business Optimization Recommendations
+
+Based on your data, I recommend considering these key business improvement strategies:
+
+## Revenue Enhancement
+1. **Pricing Strategy Review**: Analyze price elasticity across your product lines to identify optimization opportunities.
+2. **Upselling Programs**: Implement structured upselling sequences to increase average transaction value.
+3. **Value-Added Services**: Identify complementary service offerings that enhance your core product value.
+
+## Customer Experience Optimization
+1. **Customer Journey Mapping**: Document each touchpoint to identify friction and enhancement opportunities.
+2. **Personalization Initiatives**: Segment customers and develop targeted experiences for each high-value segment.
+3. **Retention Programs**: Develop proactive retention strategies for customers showing declining engagement patterns.
+
+## Operational Efficiency
+1. **Process Auditing**: Identify redundancies and optimization opportunities in core business processes.
+2. **Resource Allocation**: Analyze historical patterns to optimize staffing and resource deployment.
+3. **Technology Integration**: Evaluate automation opportunities for routine administrative and operational tasks.
+
+For more specific recommendations, consider providing additional data including:
+- Transaction-level details with timestamps
+- Customer segmentation information
+- Product category and profitability metrics
+- Operational cost structure`;
+  }
+  
+  // Combine all strategies into a comprehensive response
+  let response = "# Business Optimization Recommendations\n\n";
+  
+  if (revenueStrategies) response += revenueStrategies;
+  if (productStrategies) response += productStrategies;
+  if (customerStrategies) response += customerStrategies;
+  if (operationalImprovements) response += operationalImprovements;
+  
+  // Provide a data-driven conclusion
+  response += "## Implementation Priority\n\n";
+  response += "Based on the patterns in your data, I recommend prioritizing these initiatives:\n\n";
+  
+  if (revenueColumns.length > 0) {
+    const revenueCol = revenueColumns[0];
+    const stats = statistics.numeric_columns[revenueCol];
+    const cv = (stats.std / stats.mean) * 100;
+    
+    if (cv > 50) {
+      response += "1. **Revenue Stabilization**: Your high variability in transaction values indicates inconsistent performance. Focus first on standardizing your core revenue drivers.\n\n";
+    } else {
+      response += "1. **Growth Acceleration**: Your relatively stable transaction pattern provides a solid foundation. Focus first on scaling your highest-performing segments and products.\n\n";
+    }
+  } else {
+    response += "1. **Data Enhancement**: Prioritize collecting more granular revenue and transaction data to enable more precise strategic recommendations.\n\n";
+  }
+  
+  response += "2. **Competitive Analysis**: Benchmark your performance metrics against industry standards to identify the highest-potential improvement areas.\n\n";
+  response += "3. **Test & Learn Program**: Implement a structured testing program for your highest-potential strategic initiatives, measuring impact against clear KPIs.\n\n";
+  
+  return response;
 } 

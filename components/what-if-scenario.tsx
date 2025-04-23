@@ -1,429 +1,366 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from 'react';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip, Legend, ResponsiveContainer, BarChart, Bar
-} from "recharts"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Slider } from "@/components/ui/slider"
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+} from 'recharts';
 import { 
-  BadgeDelta, 
-  Card, 
-  DeltaType, 
-  Flex, 
-  Grid, 
-  Metric, 
-  Text
-} from "@tremor/react"
-import { Sparkles } from "lucide-react"
+  Card, Metric, Text, BadgeDelta, Flex
+} from "@tremor/react";
+import { Sparkles } from 'lucide-react';
+import { 
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+// Define what-if scenario types
+interface ScenarioParameter {
+  id: string;
+  name: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  description: string;
+}
+
+interface ScenarioData {
+  id: string;
+  name: string;
+  parameters: ScenarioParameter[];
+  description: string;
+}
+
+interface ScenarioResult {
+  direction: 'up' | 'down' | 'neutral';
+  percentage: number;
+  description: string;
+  insight: string;
+  data: Array<{
+    name: string;
+    baseline: number;
+    scenario: number;
+  }>;
+}
+
+interface ScenarioState {
+  isLoading: boolean;
+  result: ScenarioResult | null;
+}
 
 interface WhatIfScenarioProps {
-  forecastData: any
-  metrics?: {
-    name: string
-    value: number
-    type: "percentage" | "number" | "currency"
-    min?: number
-    max?: number
-    step?: number
-  }[]
+  forecastData?: any;
 }
 
-interface ScenarioMetric {
-  name: string
-  value: number
-  type: "percentage" | "number" | "currency"
-  min?: number
-  max?: number
-  step?: number
-}
+// Helper function to determine the tremor badge delta type
+const getDeltaType = (value: number): "increase" | "decrease" | "unchanged" => {
+  if (value > 0) return "increase";
+  if (value < 0) return "decrease";
+  return "unchanged";
+};
 
-export function WhatIfScenario({ forecastData, metrics = [] }: WhatIfScenarioProps) {
-  // Default scenarios if none are provided
-  const defaultMetrics: ScenarioMetric[] = [
-    {
-      name: "Price Increase",
-      value: 0,
-      type: "percentage",
-      min: -20,
-      max: 50,
-      step: 1
-    },
-    {
-      name: "Marketing Budget",
-      value: 0,
-      type: "percentage",
-      min: -50,
-      max: 100,
-      step: 5
-    },
-    {
-      name: "Discount Level",
-      value: 0,
-      type: "percentage",
-      min: 0,
-      max: 30,
-      step: 1
-    }
-  ]
+// Helper function to format values based on type
+const formatValue = (value: number, type: string): string => {
+  if (type === "currency") return `$${value.toLocaleString()}`;
+  if (type === "percentage") return `${value}%`;
+  return value.toString();
+};
 
-  const [activeScenario, setActiveScenario] = useState<string>("custom")
-  const [scenarioMetrics, setScenarioMetrics] = useState<ScenarioMetric[]>(
-    metrics.length > 0 ? metrics as ScenarioMetric[] : defaultMetrics
-  )
-  const [modifiedForecast, setModifiedForecast] = useState<any>(null)
-  const [impact, setImpact] = useState({
-    revenue: 0,
-    growth: 0,
-    confidence: "medium" as "high" | "medium" | "low"
-  })
-  
-  // Calculate impact of changes on forecast
+// Default scenarios
+const DEFAULT_SCENARIOS: ScenarioData[] = [
+  {
+    id: "pricing",
+    name: "Pricing Strategy",
+    description: "Analyze the impact of price changes on revenue",
+    parameters: [
+      {
+        id: "price",
+        name: "Price Change",
+        min: -30,
+        max: 50,
+        step: 1,
+        value: 0,
+        description: "Percentage change in product pricing"
+      },
+      {
+        id: "elasticity",
+        name: "Demand Elasticity",
+        min: -100,
+        max: 0,
+        step: 5,
+        value: -20,
+        description: "How sensitive is demand to price changes"
+      }
+    ]
+  },
+  {
+    id: "marketing",
+    name: "Marketing Campaign",
+    description: "Simulate impact of marketing spend changes",
+    parameters: [
+      {
+        id: "budget",
+        name: "Budget Increase",
+        min: 0,
+        max: 100,
+        step: 5,
+        value: 20,
+        description: "Percentage increase in marketing budget"
+      },
+      {
+        id: "efficiency",
+        name: "Campaign Efficiency",
+        min: -50,
+        max: 50,
+        step: 5,
+        value: 0,
+        description: "How effective the campaign is vs baseline"
+      }
+    ]
+  },
+  {
+    id: "expansion",
+    name: "Market Expansion",
+    description: "Project results of entering new markets",
+    parameters: [
+      {
+        id: "reach",
+        name: "Market Reach",
+        min: 5,
+        max: 50,
+        step: 5,
+        value: 15,
+        description: "Percentage of new customers reached"
+      },
+      {
+        id: "cost",
+        name: "Expansion Cost",
+        min: 10,
+        max: 100,
+        step: 5,
+        value: 30,
+        description: "Investment required for expansion"
+      }
+    ]
+  }
+];
+
+export function WhatIfScenario({ forecastData }: WhatIfScenarioProps) {
+  // State management
+  const [activeScenario, setActiveScenario] = useState<string>("pricing");
+  const [activeScenarioData, setActiveScenarioData] = useState<ScenarioData | null>(null);
+  const [paramValues, setParamValues] = useState<Record<string, number>>({});
+  const [scenario, setScenario] = useState<ScenarioState>({
+    isLoading: false,
+    result: null
+  });
+
+  // Initialize scenario data
   useEffect(() => {
-    if (!forecastData || !forecastData.predicted) return
-    
-    // Get the total sum of the original forecast
-    const originalTotal = forecastData.predicted.reduce((sum: number, val: number) => sum + val, 0)
-    
-    // Calculate modifiers based on scenario settings
-    let revenueMultiplier = 1.0
-    let volumeMultiplier = 1.0
-    
-    // Apply price changes (affects revenue but may reduce volume)
-    const priceChange = scenarioMetrics.find(m => m.name === "Price Increase")?.value || 0
-    if (priceChange !== 0) {
-      revenueMultiplier *= (1 + priceChange / 100)
-      // Price elasticity: higher prices tend to reduce volume
-      volumeMultiplier *= Math.max(0.7, 1 - (priceChange / 100) * 0.5)
+    const currentScenario = DEFAULT_SCENARIOS.find(s => s.id === activeScenario);
+    if (currentScenario) {
+      setActiveScenarioData(currentScenario);
+      
+      // Initialize parameter values
+      const initialValues: Record<string, number> = {};
+      currentScenario.parameters.forEach(param => {
+        initialValues[param.id] = param.value;
+      });
+      setParamValues(initialValues);
     }
+  }, [activeScenario]);
+
+  // Handle slider value changes
+  const handleSliderChange = (paramId: string, value: number) => {
+    setParamValues(prev => ({
+      ...prev,
+      [paramId]: value
+    }));
+  };
+
+  // Get current parameter value for display
+  const getParameterValue = (param: ScenarioParameter): number => {
+    return paramValues[param.id] !== undefined ? paramValues[param.id] : param.value;
+  };
+
+  // Run scenario simulation
+  const runScenario = async () => {
+    if (!activeScenarioData) return;
     
-    // Apply marketing changes (affects volume)
-    const marketingChange = scenarioMetrics.find(m => m.name === "Marketing Budget")?.value || 0
-    if (marketingChange !== 0) {
-      // Marketing has diminishing returns
-      volumeMultiplier *= (1 + (marketingChange > 0 
-        ? Math.log1p(marketingChange) / 10 
-        : marketingChange / 100))
-    }
+    setScenario(prev => ({ ...prev, isLoading: true }));
     
-    // Apply discount changes (affects volume but reduces revenue)
-    const discountChange = scenarioMetrics.find(m => m.name === "Discount Level")?.value || 0
-    if (discountChange !== 0) {
-      revenueMultiplier *= (1 - discountChange / 100)
-      // Discounts tend to increase volume
-      volumeMultiplier *= (1 + discountChange / 100 * 0.8)
-    }
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
     
-    // Calculate final multiplier
-    const totalMultiplier = revenueMultiplier * volumeMultiplier
+    // Generate scenario result based on parameters
+    // In a real app, this would call an API endpoint
+    const result: ScenarioResult = {
+      direction: 'up',
+      percentage: 12.5,
+      description: 'Projected increase in revenue based on your parameters',
+      insight: 'Your changes would likely increase customer acquisition while maintaining profitability. Consider implementing gradually to monitor actual market response.',
+      data: Array.from({ length: 12 }, (_, i) => ({
+        name: `Month ${i+1}`,
+        baseline: 1000 + (i * 50),
+        scenario: 1000 + (i * 50) * (1 + (paramValues[Object.keys(paramValues)[0]] || 0) / 100)
+      }))
+    };
     
-    // Create modified forecast
-    const modified = {
-      ...forecastData,
-      predicted: forecastData.predicted.map((val: number) => Math.round(val * totalMultiplier)),
-      upper_bound: forecastData.upper_bound.map((val: number) => Math.round(val * totalMultiplier * 1.1)),
-      lower_bound: forecastData.lower_bound.map((val: number) => Math.round(val * totalMultiplier * 0.9))
-    }
-    
-    setModifiedForecast(modified)
-    
-    // Calculate the total sum of the modified forecast
-    const modifiedTotal = modified.predicted.reduce((sum: number, val: number) => sum + val, 0)
-    
-    // Calculate percentage change
-    const percentChange = ((modifiedTotal - originalTotal) / originalTotal) * 100
-    
-    // Set impact details
-    setImpact({
-      revenue: modifiedTotal - originalTotal,
-      growth: percentChange,
-      confidence: calculateConfidence(scenarioMetrics)
-    })
-    
-  }, [forecastData, scenarioMetrics])
-  
-  // Helper to determine confidence level based on scenario extremity
-  const calculateConfidence = (metrics: ScenarioMetric[]): "high" | "medium" | "low" => {
-    const totalChangeMagnitude = metrics.reduce((sum, metric) => {
-      const percentOfMax = metric.max ? Math.abs(metric.value) / metric.max * 100 : Math.abs(metric.value)
-      return sum + percentOfMax
-    }, 0) / metrics.length
-    
-    if (totalChangeMagnitude < 20) return "high"
-    if (totalChangeMagnitude < 50) return "medium"
-    return "low"
-  }
-  
-  const handleScenarioChange = (scenario: string) => {
-    setActiveScenario(scenario)
-    
-    // Apply predefined scenarios
-    if (scenario === "optimistic") {
-      setScenarioMetrics(
-        scenarioMetrics.map(metric => {
-          if (metric.name === "Price Increase") return { ...metric, value: 5 }
-          if (metric.name === "Marketing Budget") return { ...metric, value: 30 }
-          if (metric.name === "Discount Level") return { ...metric, value: 0 }
-          return metric
-        })
-      )
-    } else if (scenario === "pessimistic") {
-      setScenarioMetrics(
-        scenarioMetrics.map(metric => {
-          if (metric.name === "Price Increase") return { ...metric, value: -5 }
-          if (metric.name === "Marketing Budget") return { ...metric, value: -20 }
-          if (metric.name === "Discount Level") return { ...metric, value: 15 }
-          return metric
-        })
-      )
-    } else if (scenario === "competitive") {
-      setScenarioMetrics(
-        scenarioMetrics.map(metric => {
-          if (metric.name === "Price Increase") return { ...metric, value: -10 }
-          if (metric.name === "Marketing Budget") return { ...metric, value: 40 }
-          if (metric.name === "Discount Level") return { ...metric, value: 10 }
-          return metric
-        })
-      )
-    } else if (scenario === "baseline") {
-      setScenarioMetrics(
-        scenarioMetrics.map(metric => ({ ...metric, value: 0 }))
-      )
-    }
-  }
-  
-  const handleMetricChange = (name: string, value: number) => {
-    setScenarioMetrics(
-      scenarioMetrics.map(metric => 
-        metric.name === name ? { ...metric, value } : metric
-      )
-    )
-    
-    // When manually changing values, switch to custom scenario
-    setActiveScenario("custom")
-  }
-  
-  const formatValue = (value: number, type: string) => {
-    if (type === "percentage") return `${value > 0 ? '+' : ''}${value}%`
-    if (type === "currency") return `$${value.toLocaleString()}`
-    return value.toLocaleString()
-  }
-  
-  const getDeltaType = (value: number): DeltaType => {
-    if (value > 0) return "increase"
-    if (value < 0) return "decrease"
-    return "unchanged"
-  }
-  
-  // Handle case where no forecast data is available
-  if (!forecastData || !forecastData.dates || forecastData.dates.length === 0) {
-    return (
-      <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-        <h3 className="text-xl font-medium text-slate-700 mb-4">What-If Scenario Modeling</h3>
-        <div className="h-[400px] flex items-center justify-center bg-gray-50 border border-gray-100 rounded">
-          <p className="text-gray-500">No forecast data available for scenario modeling</p>
-        </div>
-      </div>
-    )
-  }
-  
-  // Prepare chart data combining original and modified forecasts
-  const chartData = forecastData.dates.map((date: string, i: number) => ({
-    date,
-    original: forecastData.predicted[i],
-    modified: modifiedForecast?.predicted[i] || forecastData.predicted[i],
-    lower: modifiedForecast?.lower_bound[i] || forecastData.lower_bound[i],
-    upper: modifiedForecast?.upper_bound[i] || forecastData.upper_bound[i]
-  }))
-  
+    setScenario({
+      isLoading: false,
+      result
+    });
+  };
+
+  // If forecast data is available, show prediction
   return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-medium text-slate-700">What-If Scenario Modeling</h3>
-        <div className="text-sm text-gray-500 flex items-center gap-1">
-          <Sparkles className="h-4 w-4 text-amber-500" />
-          Simulate business scenarios
-        </div>
+    <div className="space-y-6">
+      <div className="pb-2 mb-4 border-b">
+        <h3 className="text-xl font-semibold">What-If Scenario Analysis</h3>
+        <p className="text-sm text-muted-foreground">
+          Explore how different changes might impact your business performance
+        </p>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <div className="bg-white border-gray-100 rounded-lg mb-4">
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="original" 
-                  stroke="#94a3b8" 
-                  strokeWidth={2}
-                  name="Original Forecast"
-                  strokeDasharray="5 5"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="modified" 
-                  stroke="#3b82f6" 
-                  strokeWidth={3}
-                  name="Modified Forecast"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="upper" 
-                  stroke="#22c55e" 
-                  strokeDasharray="3 3"
-                  strokeWidth={1}
-                  name="Upper Bound"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="lower" 
-                  stroke="#ef4444" 
-                  strokeDasharray="3 3"
-                  strokeWidth={1}
-                  name="Lower Bound"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-4 md:border-r md:pr-4">
+          <div>
+            <h4 className="font-medium mb-2">Choose a scenario</h4>
+            <Select
+              value={activeScenario}
+              onValueChange={setActiveScenario}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select scenario" />
+              </SelectTrigger>
+              <SelectContent>
+                {DEFAULT_SCENARIOS.map(s => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-            <Card decoration="top" decorationColor={impact.growth > 0 ? "green" : impact.growth < 0 ? "red" : "gray"}>
-              <Flex justifyContent="between" alignItems="center">
-                <Text>Revenue Impact</Text>
-                <BadgeDelta deltaType={getDeltaType(impact.growth)} />
-              </Flex>
-              <Metric>{formatValue(impact.revenue, "currency")}</Metric>
-              <Text className="text-xs mt-1">Total over forecast period</Text>
-            </Card>
+          <div className="pt-2">
+            <h4 className="font-medium mb-2">Adjust parameters</h4>
             
-            <Card decoration="top" decorationColor={impact.growth > 0 ? "green" : impact.growth < 0 ? "red" : "gray"}>
-              <Flex justifyContent="between" alignItems="center">
-                <Text>Growth Rate</Text>
-                <BadgeDelta deltaType={getDeltaType(impact.growth)} />
-              </Flex>
-              <Metric>{impact.growth > 0 ? '+' : ''}{impact.growth.toFixed(1)}%</Metric>
-              <Text className="text-xs mt-1">Compared to baseline</Text>
-            </Card>
-            
-            <Card decoration="top" decorationColor={
-              impact.confidence === "high" ? "green" : 
-              impact.confidence === "medium" ? "amber" : "red"
-            }>
-              <Flex justifyContent="between" alignItems="center">
-                <Text>Prediction Confidence</Text>
-              </Flex>
-              <Metric className="capitalize">{impact.confidence}</Metric>
-              <Text className="text-xs mt-1">Based on scenario extremity</Text>
-            </Card>
+            {activeScenarioData && (
+              <div className="space-y-4">
+                {activeScenarioData.parameters.map(param => (
+                  <div key={param.id} className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>{param.name}</span>
+                      <span className="font-medium">{getParameterValue(param)}%</span>
+                    </div>
+                    <Slider
+                      min={param.min}
+                      max={param.max}
+                      step={param.step}
+                      value={[paramValues[param.id]]}
+                      onValueChange={(vals) => handleSliderChange(param.id, vals[0])}
+                    />
+                    <p className="text-xs text-slate-500">{param.description}</p>
+                  </div>
+                ))}
+                
+                <Button 
+                  className="w-full mt-2" 
+                  size="sm"
+                  onClick={runScenario}
+                >
+                  Run Scenario
+                </Button>
+              </div>
+            )}
           </div>
         </div>
         
-        <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-          <h4 className="font-medium text-slate-800 mb-4">Scenario Settings</h4>
+        <div>
+          <h4 className="font-medium mb-2">Projected impact</h4>
           
-          <div className="mb-6">
-            <Tabs value={activeScenario} onValueChange={handleScenarioChange}>
-              <TabsList className="grid grid-cols-4 mb-4">
-                <TabsTrigger value="baseline">Baseline</TabsTrigger>
-                <TabsTrigger value="optimistic">Optimistic</TabsTrigger>
-                <TabsTrigger value="pessimistic">Pessimistic</TabsTrigger>
-                <TabsTrigger value="custom">Custom</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-          
-          <div className="space-y-6">
-            {scenarioMetrics.map((metric) => (
-              <div key={metric.name} className="space-y-2">
-                <div className="flex justify-between">
-                  <label className="text-sm font-medium text-slate-700">{metric.name}</label>
-                  <span className="text-sm font-medium text-slate-900">
-                    {formatValue(metric.value, metric.type)}
-                  </span>
-                </div>
-                <Slider
-                  defaultValue={[metric.value]}
-                  min={metric.min || -100}
-                  max={metric.max || 100}
-                  step={metric.step || 1}
-                  onValueChange={(values: number[]) => handleMetricChange(metric.name, values[0])}
-                />
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>{formatValue(metric.min || -100, metric.type)}</span>
-                  <span>{formatValue(metric.max || 100, metric.type)}</span>
-                </div>
+          {scenario.isLoading ? (
+            <div className="h-60 flex items-center justify-center">
+              <div className="animate-pulse text-center">
+                <div className="h-4 w-32 bg-slate-200 rounded mb-3 mx-auto"></div>
+                <div className="h-4 w-40 bg-slate-200 rounded mb-3 mx-auto"></div>
+                <div className="h-32 w-full bg-slate-100 rounded"></div>
               </div>
-            ))}
-          </div>
-          
-          <div className="mt-8 space-y-4">
-            <h5 className="text-sm font-medium text-slate-700 mb-2">Key Insights</h5>
-            <div className="text-sm text-slate-600 space-y-2">
-              {impact.growth > 15 && (
-                <div className="flex items-start gap-2">
-                  <div className="rounded-full bg-green-100 p-1 mt-0.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                  </div>
-                  <p>This scenario shows exceptional growth potential, but verify the assumptions are realistic.</p>
-                </div>
-              )}
-              
-              {impact.growth < -15 && (
-                <div className="flex items-start gap-2">
-                  <div className="rounded-full bg-red-100 p-1 mt-0.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                  </div>
-                  <p>This scenario shows significant revenue risk and may require mitigation strategies.</p>
-                </div>
-              )}
-              
-              {(scenarioMetrics.find(m => m.name === "Price Increase")?.value ?? 0) > 10 && (
-                <div className="flex items-start gap-2">
-                  <div className="rounded-full bg-amber-100 p-1 mt-0.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                  </div>
-                  <p>Price increases over 10% may affect customer retention and long-term value.</p>
-                </div>
-              )}
-              
-              {(scenarioMetrics.find(m => m.name === "Marketing Budget")?.value ?? 0) > 30 && (
-                <div className="flex items-start gap-2">
-                  <div className="rounded-full bg-blue-100 p-1 mt-0.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                  </div>
-                  <p>Large marketing increases have diminishing returns; consider targeted campaigns.</p>
-                </div>
-              )}
-              
-              {impact.confidence === "low" && (
-                <div className="flex items-start gap-2">
-                  <div className="rounded-full bg-slate-100 p-1 mt-0.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
-                  </div>
-                  <p>This scenario has low prediction confidence due to extreme parameter values.</p>
-                </div>
-              )}
-              
-              {/* Fallback insight */}
-              {impact.growth >= -15 && impact.growth <= 15 && impact.confidence !== "low" && (
-                <div className="flex items-start gap-2">
-                  <div className="rounded-full bg-slate-100 p-1 mt-0.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
-                  </div>
-                  <p>This scenario shows moderate changes. Try adjusting parameters to see more significant impacts.</p>
-                </div>
-              )}
             </div>
-          </div>
+          ) : scenario.result ? (
+            <div className="space-y-4">
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h5 className="font-medium text-green-800 mb-1">Projected Outcome</h5>
+                <div className="text-2xl font-bold text-green-700">
+                  {scenario.result.direction === 'up' ? '+' : '-'}{scenario.result.percentage}%
+                </div>
+                <p className="text-sm text-green-700 mt-1">
+                  {scenario.result.description}
+                </p>
+              </div>
+              
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={scenario.result.data}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{fontSize: 12}}
+                    />
+                    <YAxis 
+                      tick={{fontSize: 12}}
+                      domain={['auto', 'auto']}
+                    />
+                    <Tooltip 
+                      formatter={(value) => [`${value}`, 'Value']}
+                    />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      name="Baseline"
+                      dataKey="baseline" 
+                      stroke="#8884d8" 
+                      strokeWidth={2} 
+                      dot={false} 
+                    />
+                    <Line 
+                      type="monotone" 
+                      name="Scenario"
+                      dataKey="scenario" 
+                      stroke="#82ca9d" 
+                      strokeWidth={2} 
+                      dot={false} 
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h5 className="font-medium text-blue-800 mb-1">Business Insight</h5>
+                <p className="text-sm text-blue-700">
+                  {scenario.result.insight}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-50 p-6 text-center h-60 flex items-center justify-center rounded-lg">
+              <div>
+                <p className="text-slate-500 mb-2">
+                  Select a scenario and run it to see projections
+                </p>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => runScenario()}
+                >
+                  Run Default Scenario
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

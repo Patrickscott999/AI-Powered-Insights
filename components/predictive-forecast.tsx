@@ -40,14 +40,21 @@ export function PredictiveForecast({ forecastData }: PredictiveForecastProps) {
   }
   
   // Combine dates, predictions, and bounds into a format for recharts
-  const combinedData = forecastData.dates.map((date: string, i: number) => ({
-    date,
-    predicted: forecastData.predicted[i],
-    lower: forecastData.lower_bound[i],
-    upper: forecastData.upper_bound[i],
-    // Calculate confidence interval width for visualization
-    interval_width: forecastData.upper_bound[i] - forecastData.lower_bound[i]
-  }))
+  const combinedData = forecastData.dates.map((date: string, i: number) => {
+    // Safely access prediction data with fallbacks
+    const predicted = forecastData.predicted?.[i] || 0;
+    const lowerBound = forecastData.lower_bound?.[i] || predicted * 0.9; // Fallback to 90% of predicted
+    const upperBound = forecastData.upper_bound?.[i] || predicted * 1.1; // Fallback to 110% of predicted
+    
+    return {
+      date,
+      predicted: predicted,
+      lower: lowerBound,
+      upper: upperBound,
+      // Calculate confidence interval width for visualization
+      interval_width: upperBound - lowerBound
+    };
+  })
   
   // Calculate the mean absolute percentage error if available
   const calculateMAPE = () => {
@@ -189,24 +196,24 @@ export function PredictiveForecast({ forecastData }: PredictiveForecastProps) {
                   name="Predicted Sales"
                 />
                 {showConfidenceInterval && (
-                  <Area 
-                    type="monotone" 
-                    dataKey="upper" 
-                    stroke="#82ca9d" 
+                <Area 
+                  type="monotone" 
+                  dataKey="upper" 
+                  stroke="#82ca9d" 
                     fill="none"
-                    strokeDasharray="5 5"
-                    name="Upper Bound"
-                  />
+                  strokeDasharray="5 5"
+                  name="Upper Bound"
+                />
                 )}
                 {showConfidenceInterval && (
-                  <Area 
-                    type="monotone" 
-                    dataKey="lower" 
-                    stroke="#ffc658" 
+                <Area 
+                  type="monotone" 
+                  dataKey="lower" 
+                  stroke="#ffc658" 
                     fill="none"
-                    strokeDasharray="5 5"
-                    name="Lower Bound"
-                  />
+                  strokeDasharray="5 5"
+                  name="Lower Bound"
+                />
                 )}
               </AreaChart>
             </ResponsiveContainer>
@@ -249,22 +256,22 @@ export function PredictiveForecast({ forecastData }: PredictiveForecastProps) {
                   name="Predicted Sales"
                 />
                 {showConfidenceInterval && (
-                  <Line 
-                    type="monotone" 
-                    dataKey="upper" 
-                    stroke="#82ca9d" 
-                    strokeDasharray="5 5"
-                    name="Upper Bound"
-                  />
+                <Line 
+                  type="monotone" 
+                  dataKey="upper" 
+                  stroke="#82ca9d" 
+                  strokeDasharray="5 5"
+                  name="Upper Bound"
+                />
                 )}
                 {showConfidenceInterval && (
-                  <Line 
-                    type="monotone" 
-                    dataKey="lower" 
-                    stroke="#ffc658" 
-                    strokeDasharray="5 5"
-                    name="Lower Bound"
-                  />
+                <Line 
+                  type="monotone" 
+                  dataKey="lower" 
+                  stroke="#ffc658" 
+                  strokeDasharray="5 5"
+                  name="Lower Bound"
+                />
                 )}
               </LineChart>
             </ResponsiveContainer>
