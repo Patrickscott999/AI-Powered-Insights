@@ -76,7 +76,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to see the a
 
 ## 🌐 Deployment
 
-This application is deployed on Vercel at [https://ai-powered-business-insights.vercel.app](https://ai-powered-business-insights.vercel.app).
+This application is deployed on Vercel at https://ai-powered-insights-of9c.vercel.app/visualize
 
 To deploy your own version:
 
